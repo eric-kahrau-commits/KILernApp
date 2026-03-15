@@ -1,0 +1,44 @@
+# ─── Secrets ──────────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+Config.plist
+Secrets.plist
+**/Secrets.swift
+GoogleService-Info.plist
+
+# ─── macOS ────────────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# ─── Xcode ────────────────────────────────────────────────────────────────────
+*.xcuserstate
+xcuserdata/
+*.xcuserdatad/
+*.moved-aside
+*.pbxuser
+DerivedData/
+*.xccheckout
+*.xcscmblueprint
+
+# ─── Swift Package Manager ────────────────────────────────────────────────────
+.build/
+.swiftpm/
+
+# ─── CocoaPods ────────────────────────────────────────────────────────────────
+Pods/
+Podfile.lock
+
+# ─── Archives / Builds ────────────────────────────────────────────────────────
+*.ipa
+*.dSYM.zip
+*.dSYM
+build/
+
+# ─── Fastlane ─────────────────────────────────────────────────────────────────
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
