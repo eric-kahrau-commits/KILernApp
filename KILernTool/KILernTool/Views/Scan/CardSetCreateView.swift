@@ -10,7 +10,21 @@ struct CardSetCreateView: View {
 
     @State private var showEditor = false
 
-    private let accent = Color(red: 0.38, green: 0.18, blue: 0.90)
+    private let accent = AppColors.brandTealBright
+
+    // MARK: - Dynamic Guide
+
+    private var jonathanGuideText: String {
+        if setName.isEmpty {
+            return "Gib deinem Karteikartenset einen Namen – dann können wir loslegen! 🃏"
+        } else {
+            return "Perfekt! Wähle das passende Fach und klicke auf **Erstellen**. 💪"
+        }
+    }
+
+    private var formProgress: Double {
+        setName.isEmpty ? 0.5 : 1.0
+    }
 
     var body: some View {
         NavigationStack {
@@ -18,8 +32,14 @@ struct CardSetCreateView: View {
                 Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
                 VStack(spacing: 0) {
                     navBar
+                    CreationProgressBar(progress: formProgress, color: accent)
                     ScrollView {
                         VStack(alignment: .leading, spacing: 24) {
+                            MascotGuideBanner(
+                                color: accent,
+                                characterName: "Jonathan",
+                                text: jonathanGuideText
+                            )
                             nameSection
                             subjectSection
                             createButton
@@ -60,9 +80,7 @@ struct CardSetCreateView: View {
                 .font(.system(size: 16, weight: .semibold, design: .rounded))
             Spacer()
             Button("Erstellen") {
-                if canProceed {
-                    showEditor = true
-                }
+                if canProceed { showEditor = true }
             }
             .font(.system(size: 16, weight: .semibold))
             .foregroundStyle(canProceed ? accent : Color(uiColor: .tertiaryLabel))
@@ -148,12 +166,13 @@ struct CardSetCreateView: View {
                     RoundedRectangle(cornerRadius: 14)
                         .fill(
                             LinearGradient(
-                                colors: [accent, Color(red: 0.30, green: 0.52, blue: 0.98)],
+                                colors: [Color(red: 0.10, green: 0.82, blue: 0.72),
+                                         Color(red: 0.03, green: 0.55, blue: 0.48)],
                                 startPoint: .leading,
                                 endPoint: .trailing
                             )
                         )
-                        .shadow(color: accent.opacity(0.35), radius: 8, x: 0, y: 4)
+                        .shadow(color: accent.opacity(0.40), radius: 8, x: 0, y: 4)
                 )
             }
             .buttonStyle(.plain)
@@ -203,8 +222,9 @@ struct CardSetEditorView: View {
 
     @State private var cards: [EditableCard]
 
-    private let accent = Color(red: 0.38, green: 0.18, blue: 0.90)
+    private let accent = AppColors.brandTealBright
     @State private var showSaveAnimation = false
+    @State private var generatingBackFor: UUID? = nil
 
     init(
         setName: String,
@@ -248,8 +268,18 @@ struct CardSetEditorView: View {
             }
 
             if showSaveAnimation {
-                SaveSuccessOverlay()
-                    .transition(.scale.combined(with: .opacity))
+                SaveCelebrationOverlay(
+                    color: accent,
+                    characterName: "Jonathan"
+                ) {
+                    withAnimation(.easeOut(duration: 0.25)) {
+                        showSaveAnimation = false
+                    }
+                    dismiss()
+                    onFinished()
+                }
+                .transition(.opacity)
+                .zIndex(10)
             }
         }
         .navigationBarBackButtonHidden(true)
@@ -420,6 +450,43 @@ struct CardSetEditorView: View {
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(Color(uiColor: .tertiaryLabel))
                     Spacer()
+                    // KI vorschlagen button
+                    Button {
+                        let front = card.front.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !front.isEmpty else { return }
+                        let cardId = card.wrappedValue.id
+                        generatingBackFor = cardId
+                        Task {
+                            let prompt = "Erstelle eine prägnante Rückseite (Antwort/Erklärung) für eine Lernkarte. Vorderseite: \"\(front)\". Antworte nur mit dem Inhalt der Rückseite, ohne Erklärung."
+                            let result = await AIService.shared.complete(prompt: prompt)
+                            await MainActor.run {
+                                if let text = result, let idx = cards.firstIndex(where: { $0.id == cardId }) {
+                                    cards[idx].back = text
+                                }
+                                generatingBackFor = nil
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 3) {
+                            if generatingBackFor == card.wrappedValue.id {
+                                ProgressView()
+                                    .scaleEffect(0.7)
+                                    .tint(accent)
+                            } else {
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: 11, weight: .semibold))
+                                Text("KI")
+                                    .font(.system(size: 11, weight: .semibold))
+                            }
+                        }
+                        .foregroundStyle(accent)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(Capsule().fill(accent.opacity(0.10)))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(card.front.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || generatingBackFor != nil)
+                    .opacity(card.front.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.4 : 1.0)
+
                     // Inline photo button
                     PhotosPicker(selection: card.backPhotoItem, matching: .images) {
                         HStack(spacing: 3) {
@@ -615,16 +682,8 @@ struct CardSetEditorView: View {
         store.save(set)
         StreakManager.shared.markActivity()
 
-        withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) {
+        withAnimation(.easeIn(duration: 0.25)) {
             showSaveAnimation = true
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            withAnimation(.easeOut(duration: 0.25)) {
-                showSaveAnimation = false
-            }
-            dismiss()
-            onFinished()
         }
     }
 
@@ -643,51 +702,6 @@ struct CardSetEditorView: View {
         cards.firstIndex(where: { $0.id == card.id }) ?? 0
     }
 
-    // MARK: - Save Animation Overlay
-    private struct SaveSuccessOverlay: View {
-        @State private var scale: CGFloat = 0.6
-        @State private var opacity: Double = 0.0
-
-        var body: some View {
-            ZStack {
-                Color.black.opacity(0.25)
-                    .ignoresSafeArea()
-
-                ZStack {
-                    RoundedRectangle(cornerRadius: 20)
-                        .fill(.ultraThinMaterial)
-                        .frame(width: 170, height: 170)
-                        .shadow(color: .black.opacity(0.25), radius: 16, x: 0, y: 8)
-
-                    VStack(spacing: 12) {
-                        ZStack {
-                            Circle()
-                                .strokeBorder(Color.green.opacity(0.25), lineWidth: 10)
-                                .frame(width: 72, height: 72)
-                            Circle()
-                                .fill(Color.green)
-                                .frame(width: 60, height: 60)
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 30, weight: .bold))
-                                .foregroundStyle(.white)
-                        }
-
-                        Text("Gespeichert")
-                            .font(.system(size: 17, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.primary)
-                    }
-                    .padding()
-                }
-                .scaleEffect(scale)
-                .opacity(opacity)
-                .onAppear {
-                    withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) {
-                        scale = 1.0
-                        opacity = 1.0
-                    }
-                }
-            }
-        }
-    }
 }
+
 

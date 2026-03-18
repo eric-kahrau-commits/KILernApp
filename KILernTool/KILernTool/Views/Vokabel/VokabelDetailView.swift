@@ -5,8 +5,15 @@ struct VokabelDetailView: View {
     @EnvironmentObject var store: LernSetStore
     @Environment(\.dismiss) private var dismiss
 
-    private let accent = Color(red: 0.86, green: 0.50, blue: 0.10)
+    private let accent = AppColors.brandVokabel
     private let minMC = 4
+
+    // MARK: - KI Feedback state
+    @State private var kiFeedbackActive = false
+    @State private var kiFeedbackCardIndex: Int = 0
+    @State private var kiUserInput: String = ""
+    @State private var kiFeedbackResult: String? = nil
+    @State private var kiIsChecking = false
 
     var body: some View {
         ZStack {
@@ -19,6 +26,9 @@ struct VokabelDetailView: View {
 
                     // Vocabulary List
                     vocabSection
+
+                    // KI Feedback Section
+                    kiFeedbackSection
 
                     // Learning Modes
                     modesSection
@@ -37,6 +47,7 @@ struct VokabelDetailView: View {
                         .font(.system(size: 20))
                         .foregroundStyle(.secondary)
                 }
+                .accessibilityLabel("Schließen")
                 .buttonStyle(.plain)
             }
         }
@@ -232,6 +243,206 @@ struct VokabelDetailView: View {
         }
     }
 
+    // MARK: - KI Feedback Section
+    private var kiFeedbackSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("KI-Feedback")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        kiFeedbackActive.toggle()
+                        if kiFeedbackActive {
+                            kiFeedbackCardIndex = 0
+                            kiUserInput = ""
+                            kiFeedbackResult = nil
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: kiFeedbackActive ? "xmark.circle.fill" : "brain.head.profile")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text(kiFeedbackActive ? "Beenden" : "KI-Modus starten")
+                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    }
+                    .foregroundStyle(kiFeedbackActive ? Color.red : accent)
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(
+                        Capsule().fill(kiFeedbackActive ? Color.red.opacity(0.10) : accent.opacity(0.10))
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+
+            if kiFeedbackActive && !lernSet.cards.isEmpty {
+                let card = lernSet.cards[kiFeedbackCardIndex]
+                VStack(alignment: .leading, spacing: 12) {
+                    // Card counter
+                    HStack {
+                        Text("Vokabel \(kiFeedbackCardIndex + 1) von \(lernSet.cards.count)")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+
+                    // Question
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("VOKABEL")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(accent.opacity(0.7))
+                        Text(card.question)
+                            .font(.system(size: 18, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.primary)
+                    }
+
+                    // Input field
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("DEINE ÜBERSETZUNG")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                        TextField("Übersetzung eingeben …", text: $kiUserInput)
+                            .font(.system(size: 15))
+                            .padding(12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(Color(uiColor: .tertiarySystemGroupedBackground))
+                            )
+                            .autocorrectionDisabled()
+                    }
+
+                    // KI prüfen button
+                    Button {
+                        checkWithKI(card: card)
+                    } label: {
+                        HStack(spacing: 8) {
+                            if kiIsChecking {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                                    .tint(.white)
+                            } else {
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: 13, weight: .semibold))
+                            }
+                            Text(kiIsChecking ? "KI prüft …" : "KI prüfen")
+                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        }
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(kiUserInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                      ? Color(uiColor: .tertiaryLabel)
+                                      : accent)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(kiUserInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || kiIsChecking)
+
+                    // Feedback result
+                    if let result = kiFeedbackResult {
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: kiFeedbackIsCorrect(result) ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                                .font(.system(size: 18))
+                                .foregroundStyle(kiFeedbackIsCorrect(result) ? Color.green : Color.orange)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(result)
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(.primary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Text("Richtige Antwort: \(card.answer)")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(kiFeedbackIsCorrect(result)
+                                      ? Color.green.opacity(0.08)
+                                      : Color.orange.opacity(0.08))
+                        )
+
+                        // Navigation buttons
+                        HStack(spacing: 12) {
+                            if kiFeedbackCardIndex > 0 {
+                                Button {
+                                    kiFeedbackCardIndex -= 1
+                                    kiUserInput = ""
+                                    kiFeedbackResult = nil
+                                } label: {
+                                    Label("Zurück", systemImage: "chevron.left")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundStyle(accent)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            Spacer()
+                            if kiFeedbackCardIndex + 1 < lernSet.cards.count {
+                                Button {
+                                    kiFeedbackCardIndex += 1
+                                    kiUserInput = ""
+                                    kiFeedbackResult = nil
+                                } label: {
+                                    Label("Weiter", systemImage: "chevron.right")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 14).padding(.vertical, 8)
+                                        .background(Capsule().fill(accent))
+                                }
+                                .buttonStyle(.plain)
+                            } else {
+                                Text("Alle Vokabeln abgeschlossen!")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(.green)
+                            }
+                        }
+                    }
+                }
+                .padding(16)
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                        .shadow(color: .black.opacity(0.05), radius: 8, x: 0, y: 2)
+                )
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+
+    private func checkWithKI(card: LernSetCard) {
+        let input = kiUserInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !input.isEmpty else { return }
+        kiIsChecking = true
+        kiFeedbackResult = nil
+
+        let prompt = """
+        Du bist ein Sprachlehrer. Der Schüler hat die folgende Vokabel übersetzt.
+        Vokabel: "\(card.question)"
+        Korrekte Übersetzung: "\(card.answer)"
+        Antwort des Schülers: "\(input)"
+
+        Bewerte die Antwort in einer kurzen Zeile (maximal 2 Sätze) auf Deutsch.
+        Kategorisiere als eines von: korrekt / Tippfehler / grammatisch falsch / semantisch falsch / falsch.
+        Gib kurzes konstruktives Feedback.
+        """
+
+        Task {
+            let result = await AIService.shared.complete(prompt: prompt)
+            await MainActor.run {
+                kiFeedbackResult = result ?? "KI konnte die Antwort nicht prüfen."
+                kiIsChecking = false
+            }
+        }
+    }
+
+    private func kiFeedbackIsCorrect(_ result: String) -> Bool {
+        let lower = result.lowercased()
+        return lower.contains("korrekt") || lower.contains("richtig") || lower.contains("tippfehler")
+    }
+
     private func modeCard(icon: String, color: Color, title: String, subtitle: String, locked: Bool) -> some View {
         HStack(spacing: 16) {
             ZStack {
@@ -278,7 +489,7 @@ struct VokabelAnschauView: View {
     let lernSet: LernSet
     @State private var flipped: Set<UUID> = []
 
-    private let accent = Color(red: 0.86, green: 0.50, blue: 0.10)
+    private let accent = AppColors.brandVokabel
 
     var body: some View {
         ScrollView {
@@ -316,6 +527,7 @@ struct VokabelAnschauView: View {
                                     .stroke(isFlipped ? accent.opacity(0.25) : Color.clear, lineWidth: 1))
                         )
                     }
+                    .accessibilityLabel("Karte umdrehen")
                     .buttonStyle(.plain)
                 }
             }

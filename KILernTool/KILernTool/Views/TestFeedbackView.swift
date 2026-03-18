@@ -8,7 +8,7 @@ struct TestFeedbackView: View {
     @State private var schwierigkeit: String = ""
     @State private var verbesserungen: String = ""
 
-    private let accent = Color(red: 0.38, green: 0.18, blue: 0.90)
+    private let accent = AppColors.brandPurple
 
     var body: some View {
         ZStack {
@@ -192,6 +192,7 @@ struct TestFeedbackView: View {
                     .font(.system(size: 22))
                     .foregroundStyle(Color(uiColor: .tertiaryLabel))
             }
+            .accessibilityLabel("Schließen")
             .buttonStyle(.plain)
         }
     }

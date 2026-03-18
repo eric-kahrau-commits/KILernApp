@@ -9,6 +9,7 @@ struct LernPlanDetailView: View {
     @State private var selectedTab: Tab = .heute
     @State private var generatingAufgabeId: UUID? = nil
     @State private var navigateToSet: LernSet? = nil
+    @State private var lastNavigatedSetId: UUID? = nil
 
     enum Tab: String, CaseIterable {
         case heute = "Heute"
@@ -20,7 +21,7 @@ struct LernPlanDetailView: View {
         lernPlanStore.plans.first { $0.id == planId }
     }
 
-    private let accent = Color(red: 0.10, green: 0.48, blue: 0.92)
+    private let accent = AppColors.brandBlue
 
     var body: some View {
         ZStack {
@@ -55,7 +56,20 @@ struct LernPlanDetailView: View {
                 ProgressView()
             }
         }
-        .sheet(item: $navigateToSet) { set in
+        .sheet(item: $navigateToSet, onDismiss: {
+            // P2: Auto-mark aufgabe as completed when user returns from learning session
+            if let setId = lastNavigatedSetId, let plan = plan {
+                for tag in plan.tage {
+                    for aufgabe in tag.aufgaben {
+                        if aufgabe.generatedLernSetId == setId && !aufgabe.completed {
+                            var updated = aufgabe
+                            updated.completed = true
+                            lernPlanStore.updateAufgabe(updated, inPlan: plan.id, tagId: tag.id)
+                        }
+                    }
+                }
+            }
+        }) { set in
             NavigationStack {
                 LernsetViewerView(lernSet: set)
             }
@@ -134,8 +148,11 @@ struct LernPlanDetailView: View {
                     Circle().fill(.ultraThinMaterial).frame(width: 36, height: 36)
                     Image(systemName: "xmark").font(.system(size: 13, weight: .semibold))
                 }
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Circle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Schließen")
             Spacer()
             VStack(spacing: 1) {
                 Text(plan.titel)
@@ -259,6 +276,7 @@ struct LernPlanDetailView: View {
                 if let setId = aufgabe.generatedLernSetId,
                    let set = lernSetStore.lernSets.first(where: { $0.id == setId }) {
                     Button {
+                        lastNavigatedSetId = set.id
                         navigateToSet = set
                     } label: {
                         Label("Weiterlernen", systemImage: "play.fill")
@@ -297,12 +315,23 @@ struct LernPlanDetailView: View {
 
                 Spacer()
 
-                // Difficulty badge
-                Text(aufgabe.schwierigkeit.capitalized)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(difficultyColor(aufgabe.schwierigkeit))
-                    .padding(.horizontal, 8).padding(.vertical, 4)
-                    .background(Capsule().fill(difficultyColor(aufgabe.schwierigkeit).opacity(0.12)))
+                VStack(alignment: .trailing, spacing: 5) {
+                    // Typ badge
+                    let (typLabel, typColor) = aufgabeTypInfo(aufgabe.typ)
+                    Text(typLabel)
+                        .font(.system(size: 10, weight: .black))
+                        .foregroundStyle(typColor)
+                        .tracking(0.8)
+                        .padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(Capsule().fill(typColor.opacity(0.13)))
+
+                    // Difficulty badge
+                    Text(aufgabe.schwierigkeit.capitalized)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(difficultyColor(aufgabe.schwierigkeit))
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Capsule().fill(difficultyColor(aufgabe.schwierigkeit).opacity(0.12)))
+                }
             }
         }
         .padding(16)
@@ -327,7 +356,7 @@ struct LernPlanDetailView: View {
                 .padding(.bottom, 20)
 
             // All days
-            VStack(spacing: 12) {
+            LazyVStack(spacing: 12) {
                 ForEach(plan.tage) { tag in
                     tagRow(plan: plan, tag: tag)
                 }
@@ -489,7 +518,6 @@ struct LernPlanDetailView: View {
             do {
                 let cards = try await AIService.shared.generateLernSet(
                     fach: plan.fach,
-                    klassenstufe: plan.klassenstufe,
                     thema: aufgabe.thema,
                     schwierigkeit: aufgabe.schwierigkeit,
                     anzahl: aufgabe.anzahl
@@ -507,6 +535,7 @@ struct LernPlanDetailView: View {
                 lernPlanStore.updateAufgabe(updatedAufgabe, inPlan: plan.id, tagId: tag.id)
 
                 generatingAufgabeId = nil
+                lastNavigatedSetId = newSet.id
                 navigateToSet = newSet
             } catch {
                 generatingAufgabeId = nil
@@ -528,6 +557,16 @@ struct LernPlanDetailView: View {
         case "einfach": return .green
         case "schwer":  return .red
         default:        return .orange
+        }
+    }
+
+    private func aufgabeTypInfo(_ typ: String) -> (label: String, color: Color) {
+        switch typ.lowercased() {
+        case "neuerstoff":    return ("NEU", Color(red: 0.20, green: 0.48, blue: 0.95))
+        case "uebung":        return ("ÜBUNG", Color(red: 0.15, green: 0.70, blue: 0.40))
+        case "wiederholung":  return ("WDHLG", Color(red: 0.86, green: 0.50, blue: 0.10))
+        case "simulation":    return ("TEST", Color(red: 0.85, green: 0.22, blue: 0.22))
+        default:              return ("NEU", Color(red: 0.20, green: 0.48, blue: 0.95))
         }
     }
 }

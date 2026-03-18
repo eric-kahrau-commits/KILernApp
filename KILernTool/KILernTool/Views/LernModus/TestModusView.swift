@@ -28,6 +28,7 @@ struct TestEvalEntry: Identifiable {
 struct TestModusView: View {
     let lernSet: LernSet
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var store: LernSetStore
 
     @State private var shuffledCards: [LernSetCard] = []
     @State private var currentIndex: Int = 0
@@ -43,7 +44,7 @@ struct TestModusView: View {
     @FocusState private var isFocused: Bool
     @State private var showStreakPopup: Bool = false
 
-    private let accent = Color(red: 0.25, green: 0.25, blue: 0.80)
+    private let accent = AppColors.brandTestModus
 
     var body: some View {
         ZStack {
@@ -78,6 +79,13 @@ struct TestModusView: View {
             if newPhase == .results {
                 let incremented = StreakManager.shared.markActivity()
                 if incremented { showStreakPopup = true }
+                let correct = evalResults.filter { $0.correct }.count
+                let total = evalResults.count
+                store.saveSessionResult(
+                    lernSetId: lernSet.id,
+                    score: Double(correct) / Double(max(1, total)),
+                    mode: "test"
+                )
             }
         }
         .fullScreenCover(isPresented: $showMistakes) {
@@ -116,7 +124,7 @@ struct TestModusView: View {
         ScrollView {
             VStack(spacing: 24) {
                 Text("\(currentIndex + 1) / \(shuffledCards.count)")
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.footnote.weight(.medium))
                     .foregroundStyle(.secondary)
                     .padding(.top, 8)
 
@@ -131,7 +139,7 @@ struct TestModusView: View {
                             .foregroundStyle(.secondary)
                     }
                     Text(shuffledCards[currentIndex].question)
-                        .font(.system(size: 19, weight: .semibold))
+                        .font(.system(.title3).weight(.semibold))
                         .foregroundStyle(.primary)
                         .multilineTextAlignment(.center)
                         .padding(.bottom, 4)
@@ -153,7 +161,7 @@ struct TestModusView: View {
                         .padding(.horizontal, 4)
 
                     TextField("Antwort eingeben …", text: $inputText, axis: .vertical)
-                        .font(.system(size: 16))
+                        .font(.body)
                         .lineLimit(3...6)
                         .focused($isFocused)
                         .padding(14)
@@ -213,7 +221,7 @@ struct TestModusView: View {
                 Text("KI wertet aus …")
                     .font(.system(size: 20, weight: .bold, design: .rounded))
                 Text("\(evalProgress) / \(shuffledCards.count) Antworten bewertet")
-                    .font(.system(size: 15))
+                    .font(.body)
                     .foregroundStyle(.secondary)
             }
             Spacer()
@@ -323,7 +331,7 @@ private struct TestResultsContent: View {
     @State private var noteOpacity: Double = 0
     @State private var showExplainer: Bool = false
 
-    private let accent = Color(red: 0.25, green: 0.25, blue: 0.80)
+    private let accent = AppColors.brandTestModus
 
     private var noteColor: Color {
         switch note {
@@ -335,10 +343,10 @@ private struct TestResultsContent: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 28) {
-                Text("Testergebnis")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                    .padding(.top, 40)
+            VStack(spacing: 24) {
+                MascotResultHeader(percentage: percentage, color: accent)
+                    .padding(.horizontal, 18)
+                    .padding(.top, 24)
 
                 // Note display
                 VStack(spacing: 4) {
@@ -412,6 +420,7 @@ private struct TestResultsContent: View {
                                     .fill(Color.purple.opacity(0.10))
                             )
                         }
+                        .accessibilityLabel("Fehler erklären")
                         .buttonStyle(.plain)
                     }
                     actionButton(title: "Nochmal", icon: "arrow.clockwise", color: .primary, action: onRestart)
@@ -489,7 +498,7 @@ private struct TestMistakesView: View {
                                     .font(.system(size: 11, weight: .semibold))
                                     .foregroundStyle(.secondary)
                                 Text(entry.card.question)
-                                    .font(.system(size: 15, weight: .semibold))
+                                    .font(.body.weight(.semibold))
 
                                 Divider()
 
@@ -498,7 +507,7 @@ private struct TestMistakesView: View {
                                         .font(.system(size: 11, weight: .semibold))
                                         .foregroundStyle(Color.red.opacity(0.8))
                                     Text(entry.userAnswer)
-                                        .font(.system(size: 14))
+                                        .font(.body)
                                         .foregroundStyle(.primary)
                                 }
 
@@ -508,7 +517,7 @@ private struct TestMistakesView: View {
                                             .font(.system(size: 11, weight: .semibold))
                                             .foregroundStyle(Color.green.opacity(0.8))
                                         Text(correction)
-                                            .font(.system(size: 14))
+                                            .font(.body)
                                             .foregroundStyle(.secondary)
                                     }
                                 } else {
@@ -517,7 +526,7 @@ private struct TestMistakesView: View {
                                             .font(.system(size: 11, weight: .semibold))
                                             .foregroundStyle(Color.green.opacity(0.8))
                                         Text(entry.card.answer)
-                                            .font(.system(size: 14))
+                                            .font(.body)
                                             .foregroundStyle(.secondary)
                                     }
                                 }

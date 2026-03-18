@@ -7,7 +7,7 @@ struct LernPlanStartView: View {
 
     @State private var showCreator = false
     @State private var selectedPlan: LernPlan? = nil
-    @State private var showIntro = true
+    @State private var showIntro = !UserDefaults.standard.bool(forKey: "introSeen_lernplan")
 
     private let gradient = LinearGradient(
         colors: [Color(red: 0.10, green: 0.48, blue: 0.92), Color(red: 0.22, green: 0.70, blue: 1.00)],
@@ -48,14 +48,23 @@ struct LernPlanStartView: View {
         }
 
         if showIntro {
-            SaschaIntroOverlay {
-                withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) { showIntro = false }
+            ModeIntroView(
+                characterName: "Sascha",
+                characterRole: "KI-Lernplan-Assistent",
+                gradientTop: Color(red: 0.10, green: 0.48, blue: 0.92),
+                gradientBottom: Color(red: 0.08, green: 0.35, blue: 0.80),
+                mascotColor: .white,
+                introText: "Hey, ich bin **Sascha** – dein KI-Lernplan-Assistent! 🌈\n\nIch erstelle dir einen persönlichen Tagesplan bis zu deinem Test – strukturiert, motivierend und genau auf dich zugeschnitten.\n\nFotografiere dein Schulbuch oder nenn mir dein Thema – ich plane den Rest! ✨",
+                defaultsKey: "introSeen_lernplan"
+            ) {
+                withAnimation(.easeOut(duration: 0.35)) { showIntro = false }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { showCreator = true }
             }
-            .transition(.opacity.combined(with: .move(edge: .bottom)))
+            .transition(.opacity)
             .zIndex(20)
         }
         } // outer ZStack
-        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: showIntro)
+        .animation(.easeOut(duration: 0.35), value: showIntro)
     }
 
     // MARK: - Nav Bar
@@ -67,6 +76,8 @@ struct LernPlanStartView: View {
                     Circle().fill(.ultraThinMaterial).frame(width: 36, height: 36)
                     Image(systemName: "xmark").font(.system(size: 13, weight: .semibold))
                 }
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Circle())
             }
             .buttonStyle(.plain)
             Spacer()
@@ -199,175 +210,3 @@ struct LernPlanStartView: View {
     }
 }
 
-// MARK: - Sascha Intro Overlay
-
-private struct SaschaIntroOverlay: View {
-    let onDismiss: () -> Void
-
-    private let fullText = "Hey! Ich bin **Sascha**, dein bunter KI-Lernplan-Assistent! 🌈\n\nIch erstelle dir einen persönlichen Tagesplan bis zu deinem Test – strukturiert, motivierend und genau auf dich zugeschnitten.\n\nFotografiere einfach dein Schulbuch oder nenn mir dein Thema – ich plane den Rest! ✨"
-
-    private let rainbowColors: [Color] = [
-        Color(red: 0.38, green: 0.18, blue: 0.90),
-        Color(red: 0.10, green: 0.48, blue: 0.92),
-        Color(red: 0.10, green: 0.64, blue: 0.54),
-        Color(red: 0.86, green: 0.50, blue: 0.10),
-        Color(red: 0.90, green: 0.28, blue: 0.50),
-        Color(red: 0.55, green: 0.20, blue: 0.85),
-    ]
-
-    @State private var colorIndex: Int = 0
-    @State private var displayedText: String = ""
-    @State private var mascotMood: MascotMood = .talking
-    @State private var isDone: Bool = false
-    @State private var mascotScale: CGFloat = 0.6
-    @State private var cardOffset: CGFloat = 80
-    @State private var ringRotation: Double = 0
-
-    private var currentColor: Color { rainbowColors[colorIndex] }
-
-    var body: some View {
-        ZStack {
-            Color.black.opacity(0.52).ignoresSafeArea()
-
-            VStack(spacing: 0) {
-                Spacer()
-
-                VStack(spacing: 22) {
-                    // Animated rainbow ring + mascot
-                    ZStack {
-                        // Outer rotating rainbow ring
-                        Circle()
-                            .stroke(
-                                AngularGradient(
-                                    colors: rainbowColors + [rainbowColors[0]],
-                                    center: .center
-                                ),
-                                lineWidth: 5
-                            )
-                            .frame(width: 148, height: 148)
-                            .rotationEffect(.degrees(ringRotation))
-
-                        // Inner colored circle
-                        Circle()
-                            .fill(currentColor.opacity(0.14))
-                            .frame(width: 132, height: 132)
-
-                        MascotView(color: currentColor, mood: mascotMood, size: 96)
-                            .frame(width: 96, height: 110)
-                    }
-                    .scaleEffect(mascotScale)
-
-                    // Name badge
-                    HStack(spacing: 6) {
-                        Image(systemName: "paintpalette.fill")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(currentColor)
-                        Text("SASCHA · KI-Lernplan-Assistent")
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .foregroundStyle(currentColor)
-                            .tracking(0.6)
-                    }
-                    .padding(.horizontal, 14).padding(.vertical, 6)
-                    .background(Capsule().fill(currentColor.opacity(0.10)))
-                    .animation(.easeInOut(duration: 0.6), value: colorIndex)
-
-                    // Typewriter text
-                    Group {
-                        if isDone {
-                            Text(try! AttributedString(markdown: fullText,
-                                 options: AttributedString.MarkdownParsingOptions(
-                                     interpretedSyntax: .inlineOnlyPreservingWhitespace)))
-                        } else {
-                            Text(displayedText)
-                        }
-                    }
-                    .font(.system(size: 15))
-                    .foregroundStyle(.primary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity)
-
-                    // Los geht's button
-                    Button(action: onDismiss) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "calendar.badge.plus")
-                                .font(.system(size: 15, weight: .semibold))
-                            Text("Lernplan erstellen!")
-                                .font(.system(size: 16, weight: .bold, design: .rounded))
-                        }
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 15)
-                        .background(
-                            RoundedRectangle(cornerRadius: 16)
-                                .fill(isDone
-                                      ? LinearGradient(
-                                            colors: [Color(red: 0.38, green: 0.18, blue: 0.90),
-                                                     Color(red: 0.10, green: 0.48, blue: 0.92),
-                                                     Color(red: 0.10, green: 0.64, blue: 0.54)],
-                                            startPoint: .leading, endPoint: .trailing)
-                                      : LinearGradient(colors: [Color(uiColor: .tertiaryLabel)],
-                                                       startPoint: .leading, endPoint: .trailing))
-                                .shadow(color: isDone ? currentColor.opacity(0.4) : .clear, radius: 10, x: 0, y: 5)
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!isDone)
-                    .animation(.easeInOut(duration: 0.6), value: isDone)
-                }
-                .padding(26)
-                .background(
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .fill(Color(uiColor: .systemBackground))
-                        .shadow(color: .black.opacity(0.20), radius: 32, x: 0, y: -6)
-                )
-                .offset(y: cardOffset)
-            }
-            .ignoresSafeArea(edges: .bottom)
-        }
-        .onAppear {
-            withAnimation(.spring(response: 0.6, dampingFraction: 0.68)) {
-                mascotScale = 1.0
-                cardOffset = 0
-            }
-            startRingRotation()
-            startColorCycling()
-            startTypewriter()
-        }
-    }
-
-    private func startRingRotation() {
-        withAnimation(.linear(duration: 8).repeatForever(autoreverses: false)) {
-            ringRotation = 360
-        }
-    }
-
-    private func startColorCycling() {
-        Task {
-            var idx = 0
-            while !isDone {
-                try? await Task.sleep(nanoseconds: 700_000_000)
-                idx = (idx + 1) % rainbowColors.count
-                withAnimation(.easeInOut(duration: 0.6)) { colorIndex = idx }
-            }
-        }
-    }
-
-    private func startTypewriter() {
-        Task {
-            var idx = fullText.startIndex
-            while idx < fullText.endIndex {
-                let remaining = fullText.distance(from: idx, to: fullText.endIndex)
-                let step = min(3, remaining)
-                let nextIdx = fullText.index(idx, offsetBy: step)
-                displayedText = String(fullText[fullText.startIndex..<nextIdx])
-                idx = nextIdx
-                try? await Task.sleep(nanoseconds: 11_000_000)
-            }
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                mascotMood = .celebrating
-                isDone = true
-            }
-        }
-    }
-}

@@ -5,16 +5,24 @@ struct SettingsView: View {
     @EnvironmentObject var themeManager: ThemeManager
     @EnvironmentObject var lernSetStore: LernSetStore
     @EnvironmentObject var lernPlanStore: LernPlanStore
+    @EnvironmentObject var authManager: AuthManager
+    @EnvironmentObject var streakManager: StreakManager
 
-    // Konto
+    // Konto (local fallback when not using Firebase displayName)
     @AppStorage("userName") private var userName: String = "Eric"
     @State private var editingName = false
     @State private var tempName = ""
+    @State private var showSignOutConfirm = false
 
     // Benachrichtigungen
-    @AppStorage("lernReminderEnabled") private var lernReminderEnabled: Bool = false
-    @AppStorage("lernReminderHour") private var lernReminderHour: Int = 18
-    @AppStorage("testReminderEnabled") private var testReminderEnabled: Bool = false
+    @AppStorage("lernReminderEnabled")    private var lernReminderEnabled:    Bool = false
+    @AppStorage("lernReminderHour")       private var lernReminderHour:       Int  = 19
+    @AppStorage("streakMorningEnabled")   private var streakMorningEnabled:   Bool = false
+    @AppStorage("streakEveningEnabled")   private var streakEveningEnabled:   Bool = false
+    @AppStorage("testReminderEnabled")    private var testReminderEnabled:    Bool = false
+
+    @StateObject private var notifManager = NotificationManager.shared
+    @State private var showNotifSheet = false
 
     // Lernen
     @AppStorage("defaultLernModus") private var defaultLernModus: String = "Karteikarten"
@@ -32,7 +40,7 @@ struct SettingsView: View {
     @AppStorage("soundEnabled") private var soundEnabled: Bool = true
     @AppStorage("haptikEnabled") private var haptikEnabled: Bool = true
 
-    private let accent = Color(red: 0.38, green: 0.18, blue: 0.90)
+    private let accent = AppColors.brandPurple
 
     enum DeleteTarget: Identifiable {
         case lernsets, lernplaene, alles
@@ -53,12 +61,20 @@ struct SettingsView: View {
         }
     }
 
+    /// Display name: Firebase display name if logged in, else local AppStorage name.
+    private var effectiveName: String {
+        authManager.isLoggedIn ? authManager.displayName : userName
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 22) {
 
                 // Profile card
                 profileCard
+
+                // Konto (sign-out, shown when logged in)
+                kontoSection
 
                 // Erscheinungsbild
                 settingsSection(title: "Erscheinungsbild") {
@@ -71,14 +87,26 @@ struct SettingsView: View {
 
                 // Benachrichtigungen
                 settingsSection(title: "Benachrichtigungen") {
+                    // Permission status banner
+                    if notifManager.authorizationStatus == .denied {
+                        notifDeniedBanner
+                        divider
+                    } else if notifManager.authorizationStatus == .notDetermined {
+                        notifEnableBanner
+                        divider
+                    }
+
+                    streakMorningRow
+                    divider
+                    streakEveningRow
+                    divider
                     lernReminderRow
                     if lernReminderEnabled {
                         divider
                         reminderTimeRow
                     }
-                    divider
-                    testReminderRow
                 }
+                .task { await notifManager.refreshStatus() }
 
                 // Lernen
                 settingsSection(title: "Lernen") {
@@ -163,51 +191,134 @@ struct SettingsView: View {
             nameEditSheet
         }
         .onChange(of: lernReminderHour) {
-            if lernReminderEnabled { scheduleLearnNotification() }
+            if lernReminderEnabled { rescheduleIfAuthorized() }
         }
     }
 
     // MARK: - Profile Card
 
     private var profileCard: some View {
-        Button { tempName = userName; editingName = true } label: {
-            HStack(spacing: 16) {
-                ZStack {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [Color(red: 0.38, green: 0.18, blue: 0.90),
-                                         Color(red: 0.30, green: 0.52, blue: 0.98)],
-                                startPoint: .topLeading, endPoint: .bottomTrailing
-                            )
+        HStack(spacing: 16) {
+            // Avatar
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [AppColors.brandPurple, Color(red: 0.30, green: 0.52, blue: 0.98)],
+                            startPoint: .topLeading, endPoint: .bottomTrailing
                         )
-                        .frame(width: 58, height: 58)
-                        .shadow(color: accent.opacity(0.35), radius: 8, x: 0, y: 4)
-                    Text(String(userName.prefix(1)).uppercased())
+                    )
+                    .frame(width: 58, height: 58)
+                    .shadow(color: accent.opacity(0.35), radius: 8, x: 0, y: 4)
+
+                if let url = authManager.photoURL {
+                    AsyncImage(url: url) { img in
+                        img.resizable().scaledToFill()
+                            .frame(width: 58, height: 58)
+                            .clipShape(Circle())
+                    } placeholder: {
+                        Text(authManager.userInitial)
+                            .font(.system(size: 24, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                    }
+                } else {
+                    Text(String(effectiveName.prefix(1)).uppercased())
                         .font(.system(size: 24, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                 }
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(userName)
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
-                        .foregroundStyle(.primary)
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(effectiveName)
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .foregroundStyle(.primary)
+                if authManager.isLoggedIn {
+                    Text(authManager.email ?? "Angemeldet")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                } else {
                     Text("Persönliches Konto")
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
                 }
-                Spacer()
+            }
+            Spacer()
+
+            if !authManager.isLoggedIn {
                 Image(systemName: "pencil.circle.fill")
                     .font(.system(size: 22))
                     .foregroundStyle(accent.opacity(0.5))
+            } else {
+                // Cloud sync indicator
+                Image(systemName: "checkmark.icloud.fill")
+                    .font(.system(size: 20))
+                    .foregroundStyle(accent.opacity(0.6))
             }
-            .padding(18)
-            .background(
-                RoundedRectangle(cornerRadius: 18)
-                    .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                    .shadow(color: .black.opacity(0.06), radius: 8, x: 0, y: 3)
-            )
         }
-        .buttonStyle(.plain)
+        .padding(18)
+        .background(
+            RoundedRectangle(cornerRadius: 18)
+                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                .shadow(color: .black.opacity(0.06), radius: 8, x: 0, y: 3)
+        )
+        .onTapGesture {
+            if !authManager.isLoggedIn {
+                tempName = userName
+                editingName = true
+            }
+        }
+    }
+
+    // MARK: - Konto Section (only shown when logged in)
+
+    @ViewBuilder
+    private var kontoSection: some View {
+        if authManager.isLoggedIn {
+            settingsSection(title: "Konto") {
+                HStack(spacing: 12) {
+                    iconBadge(symbol: "person.crop.circle.fill", color: accent)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Angemeldet als")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                        Text(authManager.email ?? authManager.displayName)
+                            .font(.system(size: 15, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    Image(systemName: "icloud.fill")
+                        .foregroundStyle(accent)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 13)
+
+                divider
+
+                Button {
+                    showSignOutConfirm = true
+                } label: {
+                    HStack(spacing: 12) {
+                        iconBadge(symbol: "rectangle.portrait.and.arrow.right.fill", color: .red)
+                        Text("Abmelden")
+                            .font(.system(size: 16))
+                            .foregroundStyle(.red)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 13)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .confirmationDialog("Wirklich abmelden?", isPresented: $showSignOutConfirm, titleVisibility: .visible) {
+                    Button("Abmelden", role: .destructive) { authManager.signOut() }
+                    Button("Abbrechen", role: .cancel) {}
+                } message: {
+                    Text("Deine Daten bleiben in der Cloud gespeichert und werden nach der Anmeldung wieder geladen.")
+                }
+            }
+        }
     }
 
     // MARK: - Name Edit Sheet
@@ -269,12 +380,12 @@ struct SettingsView: View {
             }
             HStack(spacing: 0) {
                 themeOption(label: "Hell", icon: "sun.max.fill", isSelected: !themeManager.isDarkMode) {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                    withAnimation(AppAnimation.standard) {
                         themeManager.isDarkMode = false
                     }
                 }
                 themeOption(label: "Dunkel", icon: "moon.fill", isSelected: themeManager.isDarkMode) {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                    withAnimation(AppAnimation.standard) {
                         themeManager.isDarkMode = true
                     }
                 }
@@ -320,22 +431,124 @@ struct SettingsView: View {
 
     // MARK: - Benachrichtigungen
 
+    private var notifEnableBanner: some View {
+        Button {
+            showNotifSheet = true
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "bell.badge.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(7)
+                    .background(Circle().fill(accent))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Benachrichtigungen aktivieren")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.primary)
+                    Text("Damit Theo dich erinnern kann")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 12)
+        }
+        .buttonStyle(.plain)
+        .sheet(isPresented: $showNotifSheet) {
+            NotificationPermissionSheet {
+                showNotifSheet = false
+                Task {
+                    let granted = await notifManager.requestPermission()
+                    if granted {
+                        streakMorningEnabled = true
+                        streakEveningEnabled = true
+                        lernReminderEnabled  = true
+                        await notifManager.scheduleAll(
+                            streak: streakManager.currentStreak,
+                            plans:  lernPlanStore.plans,
+                            sets:   lernSetStore.lernSets
+                        )
+                    }
+                }
+            } onDismiss: {
+                notifManager.markPromptShown()
+                showNotifSheet = false
+            }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
+    }
+
+    private var notifDeniedBanner: some View {
+        Button {
+            if let url = URL(string: UIApplication.openSettingsURLString) {
+                UIApplication.shared.open(url)
+            }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "bell.slash.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(7)
+                    .background(Circle().fill(Color.orange))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Benachrichtigungen blockiert")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.primary)
+                    Text("In den iOS-Einstellungen aktivieren")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 12)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var streakMorningRow: some View {
+        toggleSettingsRow(
+            icon: "sun.max.fill", iconColor: .orange,
+            title: "Streak-Erinnerung (08:00)",
+            binding: Binding(
+                get: { streakMorningEnabled },
+                set: { newVal in
+                    streakMorningEnabled = newVal
+                    rescheduleIfAuthorized()
+                }
+            )
+        )
+    }
+
+    private var streakEveningRow: some View {
+        toggleSettingsRow(
+            icon: "moon.stars.fill", iconColor: .indigo,
+            title: "Streak-Erinnerung (20:00)",
+            binding: Binding(
+                get: { streakEveningEnabled },
+                set: { newVal in
+                    streakEveningEnabled = newVal
+                    rescheduleIfAuthorized()
+                }
+            )
+        )
+    }
+
     private var lernReminderRow: some View {
         toggleSettingsRow(
-            icon: "bell.fill", iconColor: .red,
-            title: "Lern-Erinnerung",
+            icon: "book.fill", iconColor: accent,
+            title: "Tagesplan-Erinnerung",
             binding: Binding(
                 get: { lernReminderEnabled },
                 set: { newVal in
-                    if newVal {
-                        requestNotificationPermission { granted in
-                            lernReminderEnabled = granted
-                            if granted { scheduleLearnNotification() }
-                        }
-                    } else {
-                        lernReminderEnabled = false
-                        cancelNotification(id: "lern_reminder")
-                    }
+                    lernReminderEnabled = newVal
+                    rescheduleIfAuthorized()
                 }
             )
         )
@@ -343,7 +556,7 @@ struct SettingsView: View {
 
     private var reminderTimeRow: some View {
         HStack(spacing: 12) {
-            iconBadge(symbol: "clock.fill", color: .red)
+            iconBadge(symbol: "clock.fill", color: accent)
             Text("Erinnerungszeit")
                 .font(.system(size: 16))
                 .foregroundStyle(.primary)
@@ -355,30 +568,20 @@ struct SettingsView: View {
             }
             .pickerStyle(.menu)
             .tint(accent)
+            .onChange(of: lernReminderHour) { rescheduleIfAuthorized() }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 11)
     }
 
-    private var testReminderRow: some View {
-        toggleSettingsRow(
-            icon: "calendar.badge.exclamationmark", iconColor: .orange,
-            title: "Test-Erinnerung",
-            binding: Binding(
-                get: { testReminderEnabled },
-                set: { newVal in
-                    if newVal {
-                        requestNotificationPermission { granted in
-                            testReminderEnabled = granted
-                            if granted { scheduleTestNotification() }
-                        }
-                    } else {
-                        testReminderEnabled = false
-                        cancelNotification(id: "test_reminder")
-                    }
-                }
+    private func rescheduleIfAuthorized() {
+        Task {
+            await notifManager.scheduleAll(
+                streak: streakManager.currentStreak,
+                plans:  lernPlanStore.plans,
+                sets:   lernSetStore.lernSets
             )
-        )
+        }
     }
 
     // MARK: - Lernen
@@ -626,50 +829,4 @@ struct SettingsView: View {
         deleteTarget = nil
     }
 
-    private func requestNotificationPermission(completion: @escaping (Bool) -> Void) {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
-            DispatchQueue.main.async { completion(granted) }
-        }
-    }
-
-    private func cancelNotification(id: String) {
-        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [id])
-    }
-
-    private func scheduleLearnNotification() {
-        let center = UNUserNotificationCenter.current()
-        center.removePendingNotificationRequests(withIdentifiers: ["lern_reminder"])
-
-        let content = UNMutableNotificationContent()
-        content.title = "Zeit zum Lernen! 📚"
-        content.body = "Dein tägliches Lernziel wartet auf dich. Bleib am Ball!"
-        content.sound = .default
-
-        var components = DateComponents()
-        components.hour = lernReminderHour
-        components.minute = 0
-
-        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
-        let request = UNNotificationRequest(identifier: "lern_reminder", content: content, trigger: trigger)
-        center.add(request)
-    }
-
-    private func scheduleTestNotification() {
-        let center = UNUserNotificationCenter.current()
-        center.removePendingNotificationRequests(withIdentifiers: ["test_reminder"])
-
-        let content = UNMutableNotificationContent()
-        content.title = "Anstehende Tests prüfen 🎯"
-        content.body = "Schau nach deinen Lernplänen und prüfe bald anstehende Tests."
-        content.sound = .default
-
-        // Daily reminder at 8:00 AM
-        var components = DateComponents()
-        components.hour = 8
-        components.minute = 0
-
-        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
-        let request = UNNotificationRequest(identifier: "test_reminder", content: content, trigger: trigger)
-        center.add(request)
-    }
 }

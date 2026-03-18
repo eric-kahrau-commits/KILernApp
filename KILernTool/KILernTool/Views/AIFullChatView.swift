@@ -12,7 +12,7 @@ struct AIFullChatView: View {
     @State private var isLoading = false
     @FocusState private var isFocused: Bool
 
-    private let accent = Color(red: 0.38, green: 0.18, blue: 0.90)
+    private let accent = AppColors.brandPurple
     private let systemPrompt = "Du bist ein hilfreicher Lernassistent für Schüler. Antworte präzise, freundlich und auf Deutsch."
 
     var body: some View {
@@ -74,6 +74,8 @@ struct AIFullChatView: View {
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(.primary)
                 }
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Circle())
             }
             .buttonStyle(.plain)
 

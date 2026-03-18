@@ -13,6 +13,10 @@ struct LernPlanAufgabe: Identifiable, Codable, Equatable {
     var completed: Bool = false
     /// UUID of the LernSet generated when user taps Play
     var generatedLernSetId: UUID? = nil
+    /// Task type: "neuerStoff", "uebung", "wiederholung", "simulation"
+    var typ: String = "neuerStoff"
+    /// Estimated duration in minutes
+    var dauerMinuten: Int = 30
 }
 
 // MARK: - Tag (One learning day)

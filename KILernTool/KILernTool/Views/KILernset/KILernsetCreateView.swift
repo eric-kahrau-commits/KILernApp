@@ -10,7 +10,21 @@ struct KILernsetCreateView: View {
     @State private var selectedSubjectName: String = Subject.all.first?.name ?? ""
     @State private var showChat = false
 
-    private let accent = Color(red: 0.38, green: 0.18, blue: 0.90)
+    private let accent = AppColors.brandPurple
+
+    // MARK: - Dynamic Guide
+
+    private var theoGuideText: String {
+        if setName.isEmpty {
+            return "Gib deinem Lernset einen Namen – ich erstelle dann sofort die Fragen für dich! ✨"
+        } else {
+            return "Super Name! Wähle jetzt das passende Fach und klicke auf **Weiter**. 🚀"
+        }
+    }
+
+    private var formProgress: Double {
+        setName.isEmpty ? 0.5 : 1.0
+    }
 
     var body: some View {
         NavigationStack {
@@ -18,9 +32,14 @@ struct KILernsetCreateView: View {
                 Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
                 VStack(spacing: 0) {
                     navBar
+                    CreationProgressBar(progress: formProgress, color: accent)
                     ScrollView {
                         VStack(alignment: .leading, spacing: 24) {
-                            theoBanner
+                            MascotGuideBanner(
+                                color: accent,
+                                characterName: "Theo",
+                                text: theoGuideText
+                            )
                             nameSection
                             subjectSection
                             createButton
@@ -79,34 +98,6 @@ struct KILernsetCreateView: View {
 
     private var canProceed: Bool {
         !setName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    // MARK: - Theo Banner
-
-    private var theoBanner: some View {
-        HStack(spacing: 14) {
-            MascotView(color: accent, mood: .talking, size: 58)
-                .frame(width: 58, height: 66)
-            VStack(alignment: .leading, spacing: 5) {
-                Text("Gib mir ein paar Infos …")
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                    .foregroundStyle(.primary)
-                Text("Name und Fach – dann starten wir durch! ✨")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-            Spacer()
-        }
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(accent.opacity(0.07))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(accent.opacity(0.18), lineWidth: 1)
-                )
-        )
     }
 
     // MARK: - Name Section

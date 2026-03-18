@@ -21,7 +21,7 @@ struct GeneratedTestView: View {
         }
     }
 
-    private let accent = Color(red: 0.85, green: 0.25, blue: 0.45)
+    private let accent = AppColors.brandPink
 
     var body: some View {
         ZStack {
@@ -142,10 +142,11 @@ struct GeneratedTestView: View {
                     RoundedRectangle(cornerRadius: 14)
                         .fill(isRendering
                               ? LinearGradient(colors: [Color(uiColor: .tertiaryLabel)], startPoint: .leading, endPoint: .trailing)
-                              : LinearGradient(colors: [accent, Color(red: 0.60, green: 0.18, blue: 0.75)],
+                              : LinearGradient(colors: [accent, AppColors.brandPinkDeep],
                                                startPoint: .topLeading, endPoint: .bottomTrailing))
                 )
             }
+            .accessibilityLabel("Als PDF exportieren")
             .buttonStyle(.plain)
             .disabled(isRendering)
 
@@ -171,6 +172,7 @@ struct GeneratedTestView: View {
                         .fill(Color(uiColor: .secondarySystemGroupedBackground))
                 )
             }
+            .accessibilityLabel("In Fotos speichern")
             .buttonStyle(.plain)
 
             // Correct this test

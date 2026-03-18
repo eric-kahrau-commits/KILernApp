@@ -30,33 +30,34 @@ struct Sidebar: View {
                 .fill(.primary.opacity(0.07))
                 .frame(width: 0.5)
         }
-        .animation(.spring(response: 0.34, dampingFraction: 0.8), value: isExpanded)
+        .animation(AppAnimation.standard, value: isExpanded)
     }
 
     // MARK: Header
     private var sidebarHeader: some View {
         HStack(spacing: 10) {
+            // Mini app-icon badge — matches home-screen icon
             ZStack {
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
                     .fill(
                         LinearGradient(
-                            colors: [Color(red: 0.38, green: 0.18, blue: 0.90),
-                                     Color(red: 0.30, green: 0.52, blue: 0.98)],
+                            colors: [
+                                Color(red: 0.49, green: 0.23, blue: 0.93),
+                                Color(red: 0.18, green: 0.06, blue: 0.55)
+                            ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
                     )
                     .frame(width: 36, height: 36)
-                Image(systemName: "brain.head.profile")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.white)
+                MascotView(color: .white, mood: .idle, size: 26)
             }
-            .shadow(color: Color(red: 0.38, green: 0.18, blue: 0.90).opacity(0.35),
+            .shadow(color: Color(red: 0.49, green: 0.23, blue: 0.93).opacity(0.40),
                     radius: 6, x: 0, y: 3)
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("KI Lern")
+                    Text("Open Learn")
                         .font(.system(size: 16, weight: .bold, design: .rounded))
                         .foregroundStyle(.primary)
                     Text("Deine Lernplattform")
@@ -80,7 +81,7 @@ struct Sidebar: View {
                     isSelected: selectedRoute == route,
                     isExpanded: isExpanded
                 ) {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+                    withAnimation(AppAnimation.micro) {
                         selectedRoute = route
                         if autoCloseOnSelect || !isExpanded {
                             isOpen = false
@@ -139,7 +140,7 @@ struct Sidebar: View {
             }
         }
         .padding(.bottom, 6)
-        .animation(.spring(response: 0.34, dampingFraction: 0.8), value: isExpanded)
+        .animation(AppAnimation.standard, value: isExpanded)
     }
 
     // MARK: Footer
@@ -150,7 +151,7 @@ struct Sidebar: View {
                     Image(systemName: "sparkles")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
-                    Text("KI Lern v1.0")
+                    Text("Open Learn v1.0")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
@@ -232,13 +233,26 @@ struct SidebarNavItem: View {
         }
         .buttonStyle(.plain)
         .scaleEffect(isPressed ? 0.96 : 1.0)
+        .background(
+            Group {
+                if route == .new {
+                    GeometryReader { geo in
+                        Color.clear.onAppear {
+                            TutorialManager.shared.reportFrame(
+                                geo.frame(in: .global), for: .neuSidebarItem
+                            )
+                        }
+                    }
+                }
+            }
+        )
         .simultaneousGesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { _ in
                     withAnimation(.easeInOut(duration: 0.08)) { isPressed = true }
                 }
                 .onEnded { _ in
-                    withAnimation(.spring(response: 0.3)) { isPressed = false }
+                    withAnimation(AppAnimation.micro) { isPressed = false }
                 }
         )
     }
@@ -258,7 +272,7 @@ struct PhoneSidebarOverlay: View {
                     .ignoresSafeArea()
                     .transition(.opacity)
                     .onTapGesture {
-                        withAnimation(.spring(response: 0.34, dampingFraction: 0.8)) {
+                        withAnimation(AppAnimation.standard) {
                             isOpen = false
                         }
                     }
@@ -275,6 +289,6 @@ struct PhoneSidebarOverlay: View {
                     .zIndex(2)
             }
         }
-        .animation(.spring(response: 0.34, dampingFraction: 0.8), value: isOpen)
+        .animation(AppAnimation.standard, value: isOpen)
     }
 }

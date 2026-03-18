@@ -11,7 +11,7 @@ struct KILernsetSaveSheet: View {
     @State private var selectedSubject = Subject.all.first?.name ?? ""
     @State private var isSaved = false
 
-    private let accent = Color(red: 0.38, green: 0.18, blue: 0.90)
+    private let accent = AppColors.brandPurple
 
     var body: some View {
         ZStack {

@@ -12,6 +12,12 @@ struct SubjectDetailView: View {
             Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
+                    if !subjectSets.isEmpty {
+                        LearnMascotCard(style: .browse, color: subject.color)
+                            .padding(.horizontal, 18)
+                            .padding(.top, 8)
+                    }
+
                     if subjectSets.isEmpty {
                         VStack(spacing: 12) {
                             Image(systemName: "rectangle.stack")
@@ -36,7 +42,7 @@ struct SubjectDetailView: View {
                                 } label: {
                                     lernSetRow(set)
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(PressScaleButtonStyle())
                             }
                         }
                         .padding(.horizontal, 18)

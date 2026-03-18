@@ -12,6 +12,12 @@ struct CreateLernPlanView: View {
     @State private var photoPickerItems: [PhotosPickerItem] = []
     @State private var showCamera = false
 
+    // Image Analysis (between Step 1 and Step 2)
+    @State private var isAnalyzingImages: Bool = false
+    @State private var extractedContent: String = ""
+    @State private var extractedTopics: [String] = []
+    @State private var analysisExpanded: Bool = false
+
     // Step 2: Details
     @State private var fach: String = Subject.all.first?.name ?? "Mathe"
     @State private var klassenstufe: String = ""
@@ -27,12 +33,19 @@ struct CreateLernPlanView: View {
     @State private var generationError: String? = nil
     @State private var isGeneratingOverlay: Bool = false
     @State private var generationProgress: Double = 0
+    @State private var showCelebration: Bool = false
+    @State private var savedPlan: LernPlan? = nil
+    @State private var showDismissAlert: Bool = false
+
+    private var hasUnsavedChanges: Bool {
+        !thema.isEmpty || !klassenstufe.isEmpty || !besonderheiten.isEmpty || !selectedImages.isEmpty
+    }
 
     private let gradient = LinearGradient(
         colors: [Color(red: 0.10, green: 0.48, blue: 0.92), Color(red: 0.22, green: 0.70, blue: 1.00)],
         startPoint: .topLeading, endPoint: .bottomTrailing
     )
-    private let accent = Color(red: 0.10, green: 0.48, blue: 0.92)
+    private let accent = AppColors.brandBlue
 
     private var canAdvance: Bool {
         if currentStep == 1 { return true }  // photos optional
@@ -40,15 +53,44 @@ struct CreateLernPlanView: View {
                !thema.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
+    private var saschaGuideText: String {
+        if currentStep == 1 {
+            if selectedImages.isEmpty {
+                return "Hast du Buchseiten, die ich analysieren soll? 📸\nFotos helfen mir, deinen Plan noch genauer zu gestalten – aber kein Muss!"
+            } else {
+                return "Super! \(selectedImages.count) \(selectedImages.count == 1 ? "Seite" : "Seiten") hochgeladen. Ich analysiere den Inhalt und erstelle einen maßgeschneiderten Plan! 🔍"
+            }
+        } else {
+            if isAnalyzingImages {
+                return "Ich lese gerade deine Buchseiten … Das dauert nur einen Moment! 📖"
+            }
+            if !extractedContent.isEmpty {
+                return "Ich habe deinen Buchinhalt analysiert! Ergänze noch die Details – dann erstelle ich deinen Plan. 🎯"
+            }
+            let detailsFilled = !klassenstufe.trimmingCharacters(in: .whitespaces).isEmpty &&
+                                !thema.trimmingCharacters(in: .whitespaces).isEmpty
+            return detailsFilled
+                ? "Perfekt! Ich bin bereit – klick auf **Lernplan erstellen**! 🚀"
+                : "Fast da! Sag mir Fach, Klasse und Thema – ich baue dir einen perfekten Lernplan! 🗓️"
+        }
+    }
+
+    private var formProgress: Double {
+        if currentStep == 1 { return 0.5 }
+        let filled = !klassenstufe.trimmingCharacters(in: .whitespaces).isEmpty &&
+                     !thema.trimmingCharacters(in: .whitespaces).isEmpty
+        return filled ? 1.0 : 0.5
+    }
+
     var body: some View {
         ZStack {
             Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
             VStack(spacing: 0) {
                 navBar
-                stepIndicator
+                CreationProgressBar(progress: formProgress, color: accent)
                 ScrollView {
                     VStack(spacing: 24) {
-                        saschaBanner
+                        MascotGuideBanner(color: accent, characterName: "Sascha", text: saschaGuideText)
                         if currentStep == 1 {
                             photoStep
                         } else {
@@ -67,8 +109,26 @@ struct CreateLernPlanView: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     .zIndex(10)
             }
+
+            if showCelebration {
+                SaveCelebrationOverlay(color: accent, characterName: "Sascha") {
+                    showCelebration = false
+                    dismiss()
+                    if let plan = savedPlan {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { onSaved?(plan) }
+                    }
+                }
+                .transition(.opacity)
+                .zIndex(20)
+            }
         }
         .animation(.spring(response: 0.5, dampingFraction: 0.8), value: isGeneratingOverlay)
+        .alert("Eingaben verwerfen?", isPresented: $showDismissAlert) {
+            Button("Verwerfen", role: .destructive) { dismiss() }
+            Button("Weiter bearbeiten", role: .cancel) {}
+        } message: {
+            Text("Deine Eingaben gehen verloren, wenn du jetzt abbrichst.")
+        }
         .sheet(isPresented: $showCamera) {
             CameraPickerView { image in
                 selectedImages.append(image)
@@ -92,15 +152,24 @@ struct CreateLernPlanView: View {
     private var navBar: some View {
         HStack {
             Button {
-                if currentStep > 1 { currentStep -= 1 } else { dismiss() }
+                if currentStep > 1 {
+                    currentStep -= 1
+                } else if hasUnsavedChanges {
+                    showDismissAlert = true
+                } else {
+                    dismiss()
+                }
             } label: {
                 ZStack {
                     Circle().fill(.ultraThinMaterial).frame(width: 36, height: 36)
                     Image(systemName: currentStep > 1 ? "chevron.left" : "xmark")
                         .font(.system(size: 13, weight: .semibold))
                 }
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Circle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(currentStep > 1 ? "Zurück" : "Schließen")
             Spacer()
             Text("Lernplan erstellen")
                 .font(.system(size: 17, weight: .semibold, design: .rounded))
@@ -112,74 +181,6 @@ struct CreateLernPlanView: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(.primary.opacity(0.06)).frame(height: 0.5)
         }
-    }
-
-    // MARK: - Sascha Banner
-
-    private var saschaBanner: some View {
-        let messages = [
-            "Hast du Buchseiten, die ich analysieren soll? 📸\nFotos helfen mir, deinen Plan noch genauer zu gestalten – aber kein Muss!",
-            "Fast da! Sag mir Fach, Klasse und Thema – ich baue dir einen perfekten Lernplan! 🗓️"
-        ]
-        let msg = messages[min(currentStep - 1, messages.count - 1)]
-        return HStack(spacing: 14) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(LinearGradient(
-                        colors: [Color(red: 0.38, green: 0.18, blue: 0.90),
-                                 Color(red: 0.10, green: 0.48, blue: 0.92),
-                                 Color(red: 0.10, green: 0.64, blue: 0.54)],
-                        startPoint: .topLeading, endPoint: .bottomTrailing
-                    ))
-                    .frame(width: 50, height: 50)
-                MascotView(color: .white, mood: .talking, size: 36)
-                    .frame(width: 36, height: 40)
-            }
-            VStack(alignment: .leading, spacing: 3) {
-                Text("SASCHA")
-                    .font(.system(size: 9, weight: .bold, design: .rounded))
-                    .foregroundStyle(accent)
-                    .tracking(1.5)
-                Text(msg)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.primary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer()
-        }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(accent.opacity(0.06))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(
-                            LinearGradient(
-                                colors: [Color(red: 0.38, green: 0.18, blue: 0.90),
-                                         Color(red: 0.10, green: 0.48, blue: 0.92),
-                                         Color(red: 0.10, green: 0.64, blue: 0.54)],
-                                startPoint: .topLeading, endPoint: .trailing
-                            ),
-                            lineWidth: 1.5
-                        )
-                )
-        )
-        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: currentStep)
-    }
-
-    // MARK: - Step Indicator
-
-    private var stepIndicator: some View {
-        HStack(spacing: 8) {
-            ForEach(1...2, id: \.self) { step in
-                Capsule()
-                    .fill(currentStep >= step ? accent : Color(uiColor: .tertiarySystemGroupedBackground))
-                    .frame(height: 4)
-                    .animation(.easeInOut(duration: 0.3), value: currentStep)
-            }
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 10)
     }
 
     // MARK: - Step 1: Photos
@@ -282,6 +283,16 @@ struct CreateLernPlanView: View {
                     .foregroundStyle(.secondary)
             }
 
+            // Show analysis result if images were uploaded
+            if !extractedContent.isEmpty {
+                BookAnalysisCard(
+                    topics: extractedTopics,
+                    fullText: extractedContent,
+                    imageCount: selectedImages.count,
+                    isExpanded: $analysisExpanded
+                )
+            }
+
             // Fach picker
             VStack(alignment: .leading, spacing: 8) {
                 Text("Fach")
@@ -375,10 +386,20 @@ struct CreateLernPlanView: View {
             Divider()
             Button(action: handleMainAction) {
                 Group {
-                    if isGenerating {
+                    if isAnalyzingImages {
+                        HStack(spacing: 10) {
+                            ProgressView().progressViewStyle(.circular).tint(.white)
+                            Text("Buchseiten werden analysiert …")
+                        }
+                    } else if isGenerating {
                         HStack(spacing: 10) {
                             ProgressView().progressViewStyle(.circular).tint(.white)
                             Text("KI erstellt Lernplan …")
+                        }
+                    } else if currentStep == 1 && !selectedImages.isEmpty {
+                        HStack(spacing: 8) {
+                            Image(systemName: "doc.text.magnifyingglass")
+                            Text("Bilder analysieren & Weiter")
                         }
                     } else {
                         Text(currentStep == 1 ? "Weiter" : "Lernplan erstellen")
@@ -390,11 +411,13 @@ struct CreateLernPlanView: View {
                 .padding(.vertical, 15)
                 .background(
                     RoundedRectangle(cornerRadius: 16)
-                        .fill(canAdvance && !isGenerating ? gradient : LinearGradient(colors: [Color(uiColor: .tertiaryLabel)], startPoint: .leading, endPoint: .trailing))
+                        .fill(canAdvance && !isGenerating && !isAnalyzingImages
+                              ? gradient
+                              : LinearGradient(colors: [Color(uiColor: .tertiaryLabel)], startPoint: .leading, endPoint: .trailing))
                 )
             }
             .buttonStyle(.plain)
-            .disabled(!canAdvance || isGenerating)
+            .disabled(!canAdvance || isGenerating || isAnalyzingImages)
             .padding(.horizontal, 18).padding(.vertical, 12)
             .background(Color(uiColor: .systemBackground))
         }
@@ -404,9 +427,34 @@ struct CreateLernPlanView: View {
 
     private func handleMainAction() {
         if currentStep == 1 {
-            withAnimation { currentStep = 2 }
+            if selectedImages.isEmpty {
+                withAnimation { currentStep = 2 }
+            } else {
+                analyzeImagesAndAdvance()
+            }
         } else {
             generatePlan()
+        }
+    }
+
+    private func analyzeImagesAndAdvance() {
+        isAnalyzingImages = true
+        Task {
+            do {
+                let analysis = try await AIService.shared.analyzeBookPages(images: selectedImages)
+                extractedContent = analysis.fullText
+                extractedTopics  = analysis.topics
+                // Pre-fill thema from extracted topics if user hasn't typed anything
+                if thema.trimmingCharacters(in: .whitespaces).isEmpty && !analysis.topics.isEmpty {
+                    thema = analysis.topics.prefix(3).joined(separator: ", ")
+                }
+            } catch {
+                // Analysis failed — still advance, generation will work without extracted content
+                extractedContent = ""
+                extractedTopics  = []
+            }
+            isAnalyzingImages = false
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) { currentStep = 2 }
         }
     }
 
@@ -436,7 +484,7 @@ struct CreateLernPlanView: View {
                     thema: thema,
                     besonderheiten: besonderheiten,
                     testDatum: testDatum,
-                    images: selectedImages
+                    extractedContent: extractedContent
                 )
 
                 // Build LernPlanTage with dates starting from tomorrow
@@ -451,7 +499,9 @@ struct CreateLernPlanView: View {
                             beschreibung: raw.beschreibung,
                             thema: raw.thema,
                             schwierigkeit: raw.schwierigkeit,
-                            anzahl: 10
+                            anzahl: 10,
+                            typ: raw.typ ?? "neuerStoff",
+                            dauerMinuten: raw.dauerMinuten ?? 30
                         )
                     }
                     tage.append(LernPlanTag(tagNummer: i + 1, datum: date, aufgaben: aufgaben))
@@ -469,15 +519,13 @@ struct CreateLernPlanView: View {
 
                 lernPlanStore.save(plan)
                 StreakManager.shared.markActivity()
+                savedPlan = plan
                 isGenerating = false
                 withAnimation(.easeOut(duration: 0.3)) { generationProgress = 100 }
                 try? await Task.sleep(nanoseconds: 700_000_000)
                 withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) { isGeneratingOverlay = false }
                 try? await Task.sleep(nanoseconds: 350_000_000)
-                dismiss()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                    onSaved?(plan)
-                }
+                withAnimation { showCelebration = true }
             } catch {
                 isGenerating = false
                 withAnimation { isGeneratingOverlay = false }
@@ -501,6 +549,90 @@ struct CreateLernPlanView: View {
                         .fill(Color(uiColor: .secondarySystemGroupedBackground))
                 )
         }
+    }
+}
+
+// MARK: - Book Analysis Card
+
+private struct BookAnalysisCard: View {
+    let topics: [String]
+    let fullText: String
+    let imageCount: Int
+    @Binding var isExpanded: Bool
+
+    private let accent = Color(red: 0.10, green: 0.48, blue: 0.92)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Header
+            HStack(spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(accent.opacity(0.12))
+                        .frame(width: 34, height: 34)
+                    Image(systemName: "doc.text.magnifyingglass")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(accent)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("KI hat \(imageCount) \(imageCount == 1 ? "Buchseite" : "Buchseiten") analysiert")
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundStyle(.primary)
+                    Text("Lernplan wird auf deinen Buchinhalt zugeschnitten")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        isExpanded.toggle()
+                    }
+                } label: {
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(accent)
+                        .frame(width: 28, height: 28)
+                        .background(Circle().fill(accent.opacity(0.10)))
+                }
+                .buttonStyle(.plain)
+            }
+
+            // Topic chips
+            if !topics.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(topics, id: \.self) { topic in
+                            Text(topic)
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .foregroundStyle(accent)
+                                .padding(.horizontal, 10).padding(.vertical, 5)
+                                .background(Capsule().fill(accent.opacity(0.10)))
+                        }
+                    }
+                }
+            }
+
+            // Full analysis text (expandable)
+            if isExpanded {
+                Divider()
+                    .overlay(accent.opacity(0.15))
+
+                Text(fullText)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineSpacing(4)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(accent.opacity(0.06))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(accent.opacity(0.18), lineWidth: 1)
+                )
+        )
     }
 }
 

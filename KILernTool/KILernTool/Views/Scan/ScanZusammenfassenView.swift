@@ -32,7 +32,7 @@ struct ScanZusammenfassenView: View {
     @State private var saved: Bool = false
     @State private var errorMessage: String? = nil
 
-    private let accent = Color(red: 0.12, green: 0.58, blue: 0.46)
+    private let accent = AppColors.brandTeal
     private let kristinRed = Color(red: 0.85, green: 0.20, blue: 0.22)
     private let schwierigkeiten = ["einfach", "mittel", "schwer"]
 
@@ -74,6 +74,7 @@ struct ScanZusammenfassenView: View {
                             .font(.system(size: isBack ? 16 : 20, weight: isBack ? .semibold : .regular))
                             .foregroundStyle(.secondary)
                     }
+                    .accessibilityLabel(phase == .konfigurieren ? "Zurück" : "Schließen")
                     .buttonStyle(.plain)
                 }
             }
@@ -115,7 +116,7 @@ struct ScanZusammenfassenView: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    kristinBanner(msg: "Fotografiere deine Buchseiten – bis zu 6 Stück! 📸\nIch lese und analysiere jeden Text für dich.")
+                    MascotGuideBanner(color: kristinRed, characterName: "Kristin", text: "Fotografiere deine Buchseiten – bis zu 6 Stück! 📸\nIch lese und analysiere jeden Text für dich.")
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Seiten scannen")
                             .font(.system(size: 20, weight: .bold, design: .rounded))
@@ -144,6 +145,7 @@ struct ScanZusammenfassenView: View {
                                                 .foregroundStyle(.white)
                                         }
                                     }
+                                    .accessibilityLabel("Bild entfernen")
                                     .buttonStyle(.plain)
                                     .padding(4)
                                 }
@@ -215,7 +217,7 @@ struct ScanZusammenfassenView: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    kristinBanner(msg: "Was soll ich mit den Seiten machen? 🤔\nZusammenfassen oder direkt Lernkarten erstellen?")
+                    MascotGuideBanner(color: kristinRed, characterName: "Kristin", text: "Was soll ich mit den Seiten machen? 🤔\nZusammenfassen oder direkt Lernkarten erstellen?")
 
                     // Aktion wählen
                     VStack(alignment: .leading, spacing: 10) {
@@ -442,7 +444,7 @@ struct ScanZusammenfassenView: View {
     private var zusammenfassungErgebnis: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                kristinBanner(msg: "Fertig! 🎉 Ich habe \(selectedImages.count) Seite\(selectedImages.count == 1 ? "" : "n") für dich zusammengefasst.\nTeile die Zusammenfassung oder speichere sie für später!")
+                MascotGuideBanner(color: kristinRed, characterName: "Kristin", text: "Fertig! 🎉 Ich habe \(selectedImages.count) Seite\(selectedImages.count == 1 ? "" : "n") für dich zusammengefasst.\nTeile die Zusammenfassung oder speichere sie für später!")
                 HStack(spacing: 8) {
                     Image(systemName: "text.alignleft")
                         .font(.system(size: 14, weight: .semibold))
@@ -498,7 +500,7 @@ struct ScanZusammenfassenView: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    kristinBanner(msg: "Super! 🔥 \(generierteKarten.count) Lernkarten sind fertig!\nGib deinem Lernset einen Namen und speichere es ab.")
+                    MascotGuideBanner(color: kristinRed, characterName: "Kristin", text: "Super! 🔥 \(generierteKarten.count) Lernkarten sind fertig!\nGib deinem Lernset einen Namen und speichere es ab.")
                     // Name eingeben
                     if !saved {
                         VStack(alignment: .leading, spacing: 8) {
@@ -626,41 +628,6 @@ struct ScanZusammenfassenView: View {
     }
 
     // MARK: - Helpers
-
-    private func kristinBanner(msg: String) -> some View {
-        HStack(spacing: 14) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(LinearGradient(
-                        colors: [kristinRed, Color(red: 0.60, green: 0.10, blue: 0.12)],
-                        startPoint: .topLeading, endPoint: .bottomTrailing
-                    ))
-                    .frame(width: 44, height: 44)
-                MascotView(color: .white, mood: .talking, size: 30)
-                    .frame(width: 30, height: 34)
-            }
-            VStack(alignment: .leading, spacing: 3) {
-                Text("KRISTIN")
-                    .font(.system(size: 9, weight: .bold, design: .rounded))
-                    .foregroundStyle(kristinRed)
-                    .tracking(1.4)
-                Text(msg)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.primary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer()
-        }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(kristinRed.opacity(0.06))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(kristinRed.opacity(0.18), lineWidth: 1)
-                )
-        )
-    }
 
     private func sectionLabel(_ text: String) -> some View {
         Text(text)

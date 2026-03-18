@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import FirebaseAuth
 
 final class LernPlanStore: ObservableObject {
     static let shared = LernPlanStore()
@@ -7,6 +8,7 @@ final class LernPlanStore: ObservableObject {
     @Published private(set) var plans: [LernPlan] = []
 
     private let storageKey = "lernplaene_v1"
+    private let firestore = FirestoreService.shared
 
     init() { load() }
 
@@ -19,11 +21,17 @@ final class LernPlanStore: ObservableObject {
             plans.insert(plan, at: 0)
         }
         persist()
+        if Auth.auth().currentUser != nil {
+            Task { await firestore.uploadLernPlan(plan) }
+        }
     }
 
     func delete(_ plan: LernPlan) {
         plans.removeAll { $0.id == plan.id }
         persist()
+        if Auth.auth().currentUser != nil {
+            Task { await firestore.deleteLernPlan(id: plan.id) }
+        }
     }
 
     /// Update a specific Aufgabe inside a plan (e.g. mark completed, store lernSetId)
@@ -34,9 +42,39 @@ final class LernPlanStore: ObservableObject {
         else { return }
         plans[planIndex].tage[tagIndex].aufgaben[aufgabeIndex] = aufgabe
         persist()
+        if Auth.auth().currentUser != nil {
+            let updated = plans[planIndex]
+            Task { await firestore.uploadLernPlan(updated) }
+        }
     }
 
-    // MARK: - Persistence
+    // MARK: - Cloud Sync
+
+    func syncFromCloud() async {
+        guard Auth.auth().currentUser != nil else { return }
+        let cloudPlans = await firestore.fetchAllLernPlans()
+        await MainActor.run {
+            var merged = plans
+            for cp in cloudPlans {
+                if let idx = merged.firstIndex(where: { $0.id == cp.id }) {
+                    merged[idx] = cp
+                } else {
+                    merged.append(cp)
+                }
+            }
+            plans = merged.sorted { $0.erstelltAm > $1.erstelltAm }
+            persist()
+        }
+    }
+
+    func uploadAllToCloud() async {
+        guard Auth.auth().currentUser != nil else { return }
+        for plan in plans {
+            await firestore.uploadLernPlan(plan)
+        }
+    }
+
+    // MARK: - Persistence (UserDefaults)
 
     private func persist() {
         guard let data = try? JSONEncoder().encode(plans) else { return }

@@ -16,6 +16,9 @@ struct LearnModeSelectionView: View {
                         .padding(.horizontal, 18)
                         .padding(.top, 8)
 
+                    LearnMascotCard(style: .selectMode)
+                        .padding(.horizontal, 18)
+
                     VStack(alignment: .leading, spacing: 12) {
                         Text("MODUS WÄHLEN")
                             .font(.system(size: 11, weight: .semibold))
@@ -37,7 +40,7 @@ struct LearnModeSelectionView: View {
                                     locked: false
                                 )
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(PressScaleButtonStyle())
 
                             // Karteikarten (always available)
                             NavigationLink {
@@ -52,7 +55,7 @@ struct LearnModeSelectionView: View {
                                     locked: false
                                 )
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(PressScaleButtonStyle())
 
                             // Schnell lernen (≥ 4 cards)
                             if lernSet.cards.count >= minMC {
@@ -68,7 +71,7 @@ struct LearnModeSelectionView: View {
                                         locked: false
                                     )
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(PressScaleButtonStyle())
                             } else {
                                 modeCard(
                                     icon: "bolt.fill",
@@ -94,7 +97,7 @@ struct LearnModeSelectionView: View {
                                         locked: false
                                     )
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(PressScaleButtonStyle())
                             } else {
                                 modeCard(
                                     icon: "brain.head.profile",
@@ -120,7 +123,7 @@ struct LearnModeSelectionView: View {
                                         locked: false
                                     )
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(PressScaleButtonStyle())
                             } else {
                                 modeCard(
                                     icon: "checkmark.seal.fill",

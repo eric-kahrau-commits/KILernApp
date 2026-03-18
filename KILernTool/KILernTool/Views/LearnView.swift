@@ -15,6 +15,15 @@ struct LearnView: View {
                 VStack(alignment: .leading, spacing: 22) {
                     searchBarButton
 
+                    // Theo motivation banner
+                    TheoLearnBanner(totalSets: store.lernSets.count)
+
+                    // Fällige Karten Banner (SRS)
+                    if store.totalCardsDueToday > 0 {
+                        DueCardsBanner(count: store.totalCardsDueToday, sets: store.setsDueToday)
+                            .environmentObject(store)
+                    }
+
                     Text("Deine Fächer")
                         .font(.system(size: 22, weight: .bold, design: .rounded))
                         .foregroundStyle(.primary)
@@ -31,7 +40,7 @@ struct LearnView: View {
                                     setCount: store.lernSets(for: subject.name).count
                                 )
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(PressScaleButtonStyle())
                         }
                     }
                 }
@@ -68,6 +77,58 @@ struct LearnView: View {
             )
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Due Cards Banner (SRS)
+
+struct DueCardsBanner: View {
+    let count: Int
+    let sets: [LernSet]
+    @EnvironmentObject var store: LernSetStore
+    @State private var navigateTo: LernSet? = nil
+
+    var body: some View {
+        Button {
+            // Navigate to the first set with due cards
+            navigateTo = sets.first
+        } label: {
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.orange.opacity(0.18))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: "clock.badge.exclamationmark.fill")
+                        .font(.system(size: 19, weight: .semibold))
+                        .foregroundStyle(.orange)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(count) Karte\(count == 1 ? "" : "n") zum Wiederholen fällig")
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.primary)
+                    Text("Stärke dein Gedächtnis mit Spaced Repetition")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.orange)
+            }
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(Color.orange.opacity(0.07))
+                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.orange.opacity(0.20), lineWidth: 1))
+            )
+        }
+        .buttonStyle(.plain)
+        .sheet(item: $navigateTo) { set in
+            NavigationStack {
+                DueCardsView(lernSet: set)
+                    .environmentObject(store)
+            }
+        }
     }
 }
 
@@ -118,5 +179,86 @@ struct SubjectFolderCard: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: 16))
             .shadow(color: subject.color.opacity(0.22), radius: 10, x: 0, y: 5)
+    }
+}
+
+// MARK: - Theo Learn Banner
+
+private struct TheoLearnBanner: View {
+    let totalSets: Int
+    private let accent = AppColors.brandPurple
+
+    private let tips = [
+        "Kleine Lerneinheiten sind effektiver als lange Sessions! 💡",
+        "Regelmäßigkeit schlägt Intensität – jeden Tag ein bisschen! 🔥",
+        "Teste dein Wissen aktiv, nicht nur passiv lesen. 🎯",
+        "Nach 20 Minuten Lernen kurz pausieren – hilft dem Gehirn! 🧠",
+        "Erkläre Gelerntes mit eigenen Worten – das festigt es! ✍️",
+    ]
+
+    private var tip: String {
+        tips[Calendar.current.component(.day, from: Date()) % tips.count]
+    }
+
+    @State private var displayedTip = ""
+    @State private var appeared = false
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 14) {
+            // Pulsing Theo
+            Group {
+                PulseGlowMascotView(color: accent, size: 52)
+            }
+            .frame(width: 66, height: 66, alignment: .center)
+            .clipped()
+
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 6) {
+                    Text("Tipp des Tages")
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundStyle(accent)
+                    if totalSets > 0 {
+                        Text("· \(totalSets) Sets")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Text(displayedTip)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.primary.opacity(0.85))
+                    .lineLimit(3)
+                    .frame(minHeight: 16, alignment: .topLeading)
+            }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [accent.opacity(0.10), Color(red: 0.30, green: 0.52, blue: 0.98).opacity(0.08)],
+                        startPoint: .topLeading, endPoint: .bottomTrailing
+                    )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18)
+                        .stroke(accent.opacity(0.18), lineWidth: 1)
+                )
+        )
+        .opacity(appeared ? 1 : 0)
+        .offset(y: appeared ? 0 : 10)
+        .task {
+            withAnimation(.spring(response: 0.60, dampingFraction: 0.78)) { appeared = true }
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            await typeTip()
+        }
+    }
+
+    private func typeTip() async {
+        let words = tip.components(separatedBy: " ")
+        for (i, word) in words.enumerated() {
+            guard !Task.isCancelled else { return }
+            displayedTip += (i == 0 ? "" : " ") + word
+            try? await Task.sleep(nanoseconds: 65_000_000)
+        }
     }
 }

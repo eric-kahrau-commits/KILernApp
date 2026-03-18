@@ -8,8 +8,10 @@ struct VokabelCreateView: View {
     @State private var fach: String = "Englisch"
     @State private var rows: [VokabelRow] = [VokabelRow(), VokabelRow(), VokabelRow()]
     @FocusState private var focusedField: FieldID?
+    @State private var showSaveAnimation = false
 
-    private let accent = Color(red: 0.86, green: 0.50, blue: 0.10)
+    private let accent = AppColors.brandVokabel
+    private let robertColor = Color(red: 0.98, green: 0.78, blue: 0.08)
     private let sprachen = ["Englisch", "Französisch", "Spanisch", "Latein"]
 
     struct VokabelRow: Identifiable {
@@ -29,12 +31,50 @@ struct VokabelCreateView: View {
         rows.filter { !$0.vokabel.isEmpty && !$0.uebersetzung.isEmpty }.count
     }
 
+    // Robert comment based on progress
+    private var robertComment: String {
+        if setName.isEmpty && filledCount == 0 {
+            return "Gib deinem Set zuerst einen Namen und trag dann die Vokabeln ein. Ich freue mich schon! 😊"
+        } else if setName.isEmpty {
+            return "Gut gemacht! Fehlt nur noch ein Name für dein Set."
+        } else if filledCount == 0 {
+            return "Super Name! Jetzt trag deine Vokabeln ein – Vokabel links, Übersetzung rechts."
+        } else if filledCount < 4 {
+            return "Weiter so! Für Multiple-Choice brauchst du noch \(4 - filledCount) Vokabel\(4 - filledCount == 1 ? "" : "n") mehr."
+        } else {
+            return "Perfekt! \(filledCount) Vokabeln eingetragen. Du kannst noch mehr hinzufügen oder jetzt speichern. 🎉"
+        }
+    }
+
+    private var robertMood: MascotMood {
+        if filledCount >= 4 { return .happy }
+        if filledCount > 0 || !setName.isEmpty { return .talking }
+        return .idle
+    }
+
+    // MARK: - Dynamic Guide
+
+    private var robertGuideText: String { robertComment }
+
+    private var formProgress: Double {
+        let namePart = setName.isEmpty ? 0.0 : 0.33
+        let vokabelPart = filledCount >= 1 ? 0.34 : 0.0
+        return 0.33 + namePart + vokabelPart   // fach always selected = 0.33
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
                 Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
+
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
+                        // Robert guide banner
+                        MascotGuideBanner(
+                            color: accent,
+                            characterName: "Robert",
+                            text: robertGuideText
+                        )
 
                         // Name
                         VStack(alignment: .leading, spacing: 8) {
@@ -67,7 +107,6 @@ struct VokabelCreateView: View {
                                         }
                                         .buttonStyle(.plain)
                                     }
-                                    // Custom fach
                                     ForEach(Subject.all.filter { !sprachen.contains($0.name) }) { subject in
                                         Button { fach = subject.name } label: {
                                             Text(subject.name)
@@ -97,7 +136,6 @@ struct VokabelCreateView: View {
                                     .foregroundStyle(.secondary)
                             }
 
-                            // Header
                             HStack(spacing: 0) {
                                 Text("VOKABEL")
                                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -112,7 +150,6 @@ struct VokabelCreateView: View {
                             .background(Color(uiColor: .tertiarySystemGroupedBackground))
                             .clipShape(RoundedRectangle(cornerRadius: 12))
 
-                            // Rows
                             VStack(spacing: 0) {
                                 ForEach(Array(rows.enumerated()), id: \.element.id) { idx, row in
                                     tableRow(row: row, idx: idx)
@@ -126,7 +163,6 @@ struct VokabelCreateView: View {
                                     .fill(Color(uiColor: .secondarySystemGroupedBackground))
                             )
 
-                            // Add row button
                             Button {
                                 let newRow = VokabelRow()
                                 rows.append(newRow)
@@ -149,21 +185,28 @@ struct VokabelCreateView: View {
                                 )
                             }
                             .buttonStyle(.plain)
-
-                            if filledCount < 4 {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "info.circle")
-                                    Text("Mindestens 4 Vokabeln für Multiple-Choice-Modi.")
-                                }
-                                .font(.system(size: 12))
-                                .foregroundStyle(Color(uiColor: .tertiaryLabel))
-                            }
                         }
                     }
                     .padding(.horizontal, 18)
                     .padding(.top, 16)
                     .padding(.bottom, 48)
                 }
+
+                // Save celebration overlay
+                if showSaveAnimation {
+                    SaveCelebrationOverlay(
+                        color: accent,
+                        characterName: "Robert"
+                    ) {
+                        showSaveAnimation = false
+                        dismiss()
+                    }
+                    .transition(.opacity)
+                    .zIndex(10)
+                }
+            }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                CreationProgressBar(progress: formProgress, color: accent)
             }
             .navigationTitle("Neues Vokabelset")
             .navigationBarTitleDisplayMode(.inline)
@@ -172,13 +215,15 @@ struct VokabelCreateView: View {
                     Button("Abbrechen") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Speichern") { saveSet() }
+                    Button("Speichern") { triggerSave() }
                         .disabled(!canSave)
                         .fontWeight(.semibold)
                 }
             }
         }
     }
+
+    // MARK: - Helpers
 
     private func tableRow(row: VokabelRow, idx: Int) -> some View {
         HStack(spacing: 0) {
@@ -242,6 +287,13 @@ struct VokabelCreateView: View {
             .foregroundStyle(.secondary)
     }
 
+    private func triggerSave() {
+        saveSet()
+        withAnimation(.easeIn(duration: 0.25)) {
+            showSaveAnimation = true
+        }
+    }
+
     private func saveSet() {
         let cards = rows
             .filter { !$0.vokabel.isEmpty && !$0.uebersetzung.isEmpty }
@@ -250,6 +302,5 @@ struct VokabelCreateView: View {
         let set = LernSet(name: setName, subject: fach, cards: cards, isVokabelSet: true)
         store.save(set)
         _ = StreakManager.shared.markActivity()
-        dismiss()
     }
 }

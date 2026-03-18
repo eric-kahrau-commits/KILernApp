@@ -3,6 +3,7 @@ import SwiftUI
 struct QuickLearnView: View {
     let lernSet: LernSet
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var store: LernSetStore
 
     @State private var shuffledCards: [LernSetCard] = []
     @State private var currentIndex: Int = 0
@@ -18,12 +19,17 @@ struct QuickLearnView: View {
     @State private var isInRetryRound: Bool = false
     @State private var showStreakPopup: Bool = false
 
+    // In-session streak (correct in a row)
+    @State private var sessionStreak: Int = 0
+    @State private var showCorrectFlash: Bool = false
+    @State private var showStreakBanner: Bool = false
+
     private var currentCard: LernSetCard? {
         guard currentIndex < shuffledCards.count else { return nil }
         return shuffledCards[currentIndex]
     }
 
-    private let accent = Color(red: 0.95, green: 0.55, blue: 0.10)
+    private let accent = AppColors.brandQuick
 
     var body: some View {
         ZStack {
@@ -49,6 +55,23 @@ struct QuickLearnView: View {
                 }
             }
 
+            // Correct answer flash
+            if showCorrectFlash {
+                CorrectAnswerFlash(isVisible: $showCorrectFlash)
+                    .zIndex(8)
+            }
+
+            // 5-in-a-row streak banner
+            if showStreakBanner {
+                VStack {
+                    StreakBanner(streak: sessionStreak, color: accent, isVisible: $showStreakBanner)
+                        .padding(.top, 8)
+                    Spacer()
+                }
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .zIndex(9)
+            }
+
             if showStreakPopup {
                 StreakPopupView(streak: StreakManager.shared.currentStreak) {
                     showStreakPopup = false
@@ -64,6 +87,11 @@ struct QuickLearnView: View {
             if finished {
                 let incremented = StreakManager.shared.markActivity()
                 if incremented { showStreakPopup = true }
+                store.saveSessionResult(
+                    lernSetId: lernSet.id,
+                    score: Double(round1Correct) / Double(max(1, lernSet.cards.count)),
+                    mode: "schnell"
+                )
             }
         }
     }
@@ -100,9 +128,9 @@ struct QuickLearnView: View {
                 if isInRetryRound {
                     HStack(spacing: 6) {
                         Image(systemName: "arrow.uturn.backward.circle.fill")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.subheadline.weight(.semibold))
                         Text("Wiederholung – \(shuffledCards.count) \(shuffledCards.count == 1 ? "Frage" : "Fragen")")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.subheadline.weight(.semibold))
                     }
                     .foregroundStyle(Color.orange)
                     .padding(.horizontal, 12)
@@ -112,14 +140,14 @@ struct QuickLearnView: View {
                 }
 
                 Text("\(currentIndex + 1) / \(shuffledCards.count)")
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.footnote.weight(.medium))
                     .foregroundStyle(.secondary)
                     .padding(.top, isInRetryRound ? 0 : 8)
 
                 // Question card
                 VStack(spacing: 12) {
                     Text(card.question)
-                        .font(.system(size: 19, weight: .semibold))
+                        .font(.system(.title3).weight(.semibold))
                         .foregroundStyle(.primary)
                         .multilineTextAlignment(.center)
                         .padding(20)
@@ -161,6 +189,7 @@ struct QuickLearnView: View {
                                     .fill(isInRetryRound ? Color.orange : accent)
                             )
                     }
+                    .accessibilityLabel("Weiter")
                     .buttonStyle(.plain)
                     .padding(.horizontal, 8)
                     .transition(.opacity.combined(with: .scale(scale: 0.97)))
@@ -200,9 +229,19 @@ struct QuickLearnView: View {
 
         return Button {
             guard selectedAnswer == nil else { return }
+            let isCorrect = choice == correctAnswer
             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                 selectedAnswer = choice
-                if choice == correctAnswer { correctCount += 1 }
+                if isCorrect {
+                    correctCount += 1
+                    sessionStreak += 1
+                    showCorrectFlash = true
+                    if sessionStreak % 5 == 0 {
+                        showStreakBanner = true
+                    }
+                } else {
+                    sessionStreak = 0
+                }
             }
         } label: {
             HStack(spacing: 12) {
@@ -217,7 +256,7 @@ struct QuickLearnView: View {
                         .frame(width: 20, height: 20)
                 }
                 Text(choice)
-                    .font(.system(size: 15, weight: .medium))
+                    .font(.body.weight(.medium))
                     .foregroundStyle(.primary)
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -284,6 +323,7 @@ struct QuickLearnView: View {
         round1Correct = 0
         retryCorrect = 0
         isInRetryRound = false
+        sessionStreak = 0
         loadChoices()
     }
 }
@@ -310,16 +350,17 @@ private struct QuickLearnResultsView: View {
         round1Total == 0 ? 0 : Double(round1Correct) / Double(round1Total) * 100
     }
 
-    private let accent = Color(red: 0.95, green: 0.55, blue: 0.10)
+    private let accent = AppColors.brandQuick
 
     var body: some View {
         ScrollView {
             VStack(spacing: 28) {
-                Text("Auswertung")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                    .padding(.top, 40)
+                // Mascot result header (score-dependent animation)
+                MascotResultHeader(percentage: percentage, color: accent)
+                    .padding(.horizontal, 18)
+                    .padding(.top, 24)
 
-                // Percentage ring (based on round 1)
+                // Stats breakdown — round details
                 ZStack {
                     Circle()
                         .stroke(Color(uiColor: .tertiarySystemGroupedBackground), lineWidth: 14)
@@ -333,7 +374,7 @@ private struct QuickLearnResultsView: View {
                         .frame(width: 160, height: 160)
                         .rotationEffect(.degrees(-90))
                     Text("\(Int(round(percentage))) %")
-                        .font(.system(size: 36, weight: .bold, design: .rounded))
+                        .font(.system(.largeTitle, design: .rounded).weight(.bold))
                         .opacity(labelOpacity)
                 }
                 .padding(.vertical, 12)
@@ -381,9 +422,11 @@ private struct QuickLearnResultsView: View {
                                     .fill(Color.purple.opacity(0.10))
                             )
                         }
+                        .accessibilityLabel("Fehler erklären")
                         .buttonStyle(.plain)
                     }
                     resultButton(title: "Nochmal", icon: "arrow.clockwise", action: onRestart)
+                        .accessibilityLabel("Neu starten")
                     resultButton(title: "Zurück", icon: "chevron.left", action: onBack)
                 }
                 .padding(.horizontal, 18)
@@ -409,7 +452,7 @@ private struct QuickLearnResultsView: View {
         HStack(spacing: 12) {
             Circle().fill(color.opacity(0.18)).frame(width: 8, height: 8)
             Text(label)
-                .font(.system(size: 15, weight: .medium))
+                .font(.body.weight(.medium))
                 .foregroundStyle(.primary)
             Spacer()
             HStack(spacing: 4) {
@@ -417,7 +460,7 @@ private struct QuickLearnResultsView: View {
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(.green)
                 Text("richtig")
-                    .font(.system(size: 13))
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
                 Text("·")
                     .foregroundStyle(.secondary)
@@ -425,7 +468,7 @@ private struct QuickLearnResultsView: View {
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(total - correct > 0 ? .red : .secondary)
                 Text("falsch")
-                    .font(.system(size: 13))
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
             }
         }

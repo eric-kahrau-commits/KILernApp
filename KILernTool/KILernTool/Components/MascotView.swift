@@ -9,6 +9,7 @@ enum MascotMood: Equatable {
 // MARK: - Pixel Art Mascot
 
 /// A pixel-art space invader style mascot, fully color-parameterized and animated.
+/// Moods .happy and .celebrating use full Duolingo-style squash & stretch sequences.
 struct MascotView: View {
     var color: Color = Color(red: 0.38, green: 0.18, blue: 0.90)
     var mood: MascotMood = .idle
@@ -17,25 +18,28 @@ struct MascotView: View {
     // Animation state
     @State private var floatY: CGFloat = 0
     @State private var tilt: Double = 0
-    @State private var bodyScale: CGFloat = 1.0
+    @State private var scaleX: CGFloat = 1.0
+    @State private var scaleY: CGFloat = 1.0
     @State private var blink: Bool = false
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     // Pixel grid: 13 cols × 13 rows
     // 0=clear, 1=body, 2=shadow, 3=highlight, 4=eyeDark, 5=eyeWhite
     private let pixels: [[UInt8]] = [
-        [0,0,0,1,0,0,0,0,0,1,0,0,0], // row  0: antennae
-        [0,0,0,1,0,0,0,0,0,1,0,0,0], // row  1: antennae
-        [0,1,1,1,1,1,1,1,1,1,1,1,0], // row  2: head top
-        [1,1,1,3,1,1,1,1,1,3,1,1,1], // row  3: highlights
-        [1,1,1,1,1,1,1,1,1,1,1,1,1], // row  4: body
-        [1,1,4,4,4,1,1,1,4,4,4,1,1], // row  5: eyes top
-        [1,1,4,5,4,1,1,1,4,5,4,1,1], // row  6: eyes + whites
-        [1,1,4,4,4,1,1,1,4,4,4,1,1], // row  7: eyes bottom
-        [1,1,1,1,1,1,1,1,1,1,1,1,1], // row  8: body
-        [1,1,2,2,1,1,1,1,2,2,1,1,1], // row  9: shadow detail
-        [0,1,1,1,1,1,1,1,1,1,1,1,0], // row 10: body lower
-        [1,1,0,0,0,0,0,0,0,0,0,1,1], // row 11: legs
-        [1,0,0,0,0,0,0,0,0,0,0,0,1], // row 12: feet
+        [0,0,0,1,0,0,0,0,0,1,0,0,0],
+        [0,0,0,1,0,0,0,0,0,1,0,0,0],
+        [0,1,1,1,1,1,1,1,1,1,1,1,0],
+        [1,1,1,3,1,1,1,1,1,3,1,1,1],
+        [1,1,1,1,1,1,1,1,1,1,1,1,1],
+        [1,1,4,4,4,1,1,1,4,4,4,1,1],
+        [1,1,4,5,4,1,1,1,4,5,4,1,1],
+        [1,1,4,4,4,1,1,1,4,4,4,1,1],
+        [1,1,1,1,1,1,1,1,1,1,1,1,1],
+        [1,1,2,2,1,1,1,1,2,2,1,1,1],
+        [0,1,1,1,1,1,1,1,1,1,1,1,0],
+        [1,1,0,0,0,0,0,0,0,0,0,1,1],
+        [1,0,0,0,0,0,0,0,0,0,0,0,1],
     ]
 
     private let cols = 13
@@ -85,56 +89,122 @@ struct MascotView: View {
         .frame(width: size, height: size)
         .offset(y: floatY)
         .rotationEffect(.degrees(tilt))
-        .scaleEffect(bodyScale)
-        .onAppear { applyAnimation(mood) }
+        .scaleEffect(x: scaleX, y: scaleY)
+        .onAppear { applyLoopAnimation(mood) }
         .onChange(of: mood) { _, newMood in
-            // Reset then re-animate
-            withAnimation(.linear(duration: 0.01)) { floatY = 0; tilt = 0; bodyScale = 1.0 }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { applyAnimation(newMood) }
+            withAnimation(.linear(duration: 0.01)) {
+                floatY = 0; tilt = 0; scaleX = 1.0; scaleY = 1.0
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                applyLoopAnimation(newMood)
+            }
         }
+        // Squash-stretch task for .happy and .celebrating
+        .task(id: mood) {
+            guard !reduceMotion else { return }
+            guard mood == .happy || mood == .celebrating else { return }
+            let intensity: CGFloat = mood == .celebrating ? 1.35 : 1.0
+            let pauseNs: UInt64 = mood == .celebrating ? 320_000_000 : 520_000_000
+            while !Task.isCancelled {
+                await squashBounceCycle(intensity: intensity)
+                guard !Task.isCancelled else { break }
+                try? await Task.sleep(nanoseconds: pauseNs)
+            }
+        }
+        // Blink loop
         .task {
+            guard !reduceMotion else { return }
             while true {
                 let waitNs = UInt64.random(in: 2_800_000_000...5_500_000_000)
                 try? await Task.sleep(nanoseconds: waitNs)
-                withAnimation(.easeInOut(duration: 0.07)) { blink = true }
-                try? await Task.sleep(nanoseconds: 130_000_000)
-                withAnimation(.easeInOut(duration: 0.07)) { blink = false }
+                // Fast close
+                withAnimation(.easeIn(duration: 0.06)) { blink = true }
+                try? await Task.sleep(nanoseconds: 60_000_000)
+                // Slow open — like real eyes
+                withAnimation(.easeOut(duration: 0.12)) { blink = false }
             }
         }
     }
 
-    private func applyAnimation(_ m: MascotMood) {
+    // MARK: - Simple loop animations (idle, talking, thinking)
+
+    private func applyLoopAnimation(_ m: MascotMood) {
+        guard !reduceMotion else { return }
         switch m {
         case .idle:
-            withAnimation(.easeInOut(duration: 1.9).repeatForever(autoreverses: true)) {
-                floatY = -5; tilt = 0; bodyScale = 1.0
+            // Two independent timings → organic, never perfectly periodic
+            withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
+                floatY = -6
+            }
+            withAnimation(.easeInOut(duration: 3.7).repeatForever(autoreverses: true)) {
+                tilt = 3.5
             }
         case .talking:
-            withAnimation(.easeInOut(duration: 0.4).repeatForever(autoreverses: true)) {
-                floatY = -3; tilt = 5; bodyScale = 1.0
-            }
-        case .happy:
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.4).repeatForever(autoreverses: true)) {
-                floatY = -14; tilt = 0; bodyScale = 1.07
+            withAnimation(.easeInOut(duration: 0.36).repeatForever(autoreverses: true)) {
+                floatY = -4; tilt = 6
             }
         case .thinking:
-            withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
-                floatY = -2; tilt = -11; bodyScale = 1.0
+            withAnimation(.easeInOut(duration: 1.15).repeatForever(autoreverses: true)) {
+                floatY = -2; tilt = -12
             }
-        case .celebrating:
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.38).repeatForever(autoreverses: true)) {
-                floatY = -20; tilt = 0; bodyScale = 1.12
-            }
+        case .happy, .celebrating:
+            break // handled by .task(id: mood)
+        }
+    }
+
+    // MARK: - Squash & Stretch bounce (Duolingo-style)
+
+    private func squashBounceCycle(intensity: CGFloat) async {
+        // 1. Anticipation — squash down
+        withAnimation(.easeIn(duration: 0.09)) {
+            scaleX = 1.0 + 0.13 * intensity
+            scaleY = 1.0 - 0.18 * intensity
+            floatY = size * 0.04 * intensity
+        }
+        try? await Task.sleep(nanoseconds: 90_000_000)
+        guard !Task.isCancelled else { return }
+
+        // 2. Launch — stretch upward
+        withAnimation(.easeOut(duration: 0.22)) {
+            scaleX = 1.0 - 0.11 * intensity
+            scaleY = 1.0 + 0.19 * intensity
+            floatY = -(size * 0.42 * intensity)
+            tilt = Double(intensity) * Double.random(in: -5...5)
+        }
+        try? await Task.sleep(nanoseconds: 220_000_000)
+        guard !Task.isCancelled else { return }
+
+        // 3. Apex — normalize briefly
+        withAnimation(.easeInOut(duration: 0.08)) {
+            scaleX = 1.0; scaleY = 1.0
+        }
+        try? await Task.sleep(nanoseconds: 80_000_000)
+        guard !Task.isCancelled else { return }
+
+        // 4. Land — squash hard
+        withAnimation(.easeIn(duration: 0.09)) {
+            scaleX = 1.0 + 0.18 * intensity
+            scaleY = 1.0 - 0.23 * intensity
+            floatY = 0
+            tilt = 0
+        }
+        try? await Task.sleep(nanoseconds: 90_000_000)
+        guard !Task.isCancelled else { return }
+
+        // 5. Spring settle
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.50)) {
+            scaleX = 1.0; scaleY = 1.0; floatY = 0; tilt = 0
         }
     }
 }
 
-// MARK: - Small Mascot Icon (for lists/grids, no animation)
+// MARK: - Small Mascot Icon (for lists/grids, animated)
 
 struct MascotIconView: View {
     var color: Color = Color(red: 0.38, green: 0.18, blue: 0.90)
     var size: CGFloat = 40
     var cornerRadius: CGFloat = 10
+    var mood: MascotMood = .idle
 
     var body: some View {
         ZStack {
@@ -149,7 +219,7 @@ struct MascotIconView: View {
                 .frame(width: size, height: size)
                 .shadow(color: color.opacity(0.35), radius: 6, x: 0, y: 3)
 
-            MascotView(color: .white, mood: .idle, size: size * 0.76)
+            MascotView(color: .white, mood: mood, size: size * 0.76)
         }
         .frame(width: size, height: size)
     }
@@ -157,9 +227,9 @@ struct MascotIconView: View {
 
 #Preview {
     HStack(spacing: 20) {
-        MascotView(color: Color(red: 0.38, green: 0.18, blue: 0.90), mood: .idle, size: 80)
-        MascotView(color: .red, mood: .happy, size: 80)
-        MascotView(color: .teal, mood: .celebrating, size: 80)
+        MascotView(color: Color(red: 0.38, green: 0.18, blue: 0.90), mood: .idle,       size: 80)
+        MascotView(color: .teal,                                        mood: .happy,      size: 80)
+        MascotView(color: .orange,                                      mood: .celebrating, size: 80)
     }
     .padding(40)
 }

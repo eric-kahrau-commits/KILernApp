@@ -1,8 +1,9 @@
 import SwiftUI
 
-// MARK: - Animated Owl Character
+// MARK: – Mascot (MascotView from Components/MascotView.swift)
+// Moods: .idle .talking .happy .thinking .celebrating
 
-struct OwlCharacterView: View {
+private struct _OwlCharacterView_Removed: View {
     var isTalking: Bool = false
     var size: CGFloat   = 120
 
@@ -249,7 +250,6 @@ struct AITutorView: View {
     @ObservedObject private var tutorManager = AITutorManager.shared
 
     @State private var selectedSession: AITutorSession?
-    @State private var showChat = false
     @State private var showNotes = false
     @State private var deletingSession: AITutorSession?
     @State private var showDeleteConfirm = false
@@ -271,11 +271,9 @@ struct AITutorView: View {
                 newChatButton
             }
             .navigationBarHidden(true)
-            .fullScreenCover(isPresented: $showChat) {
-                if let session = selectedSession {
-                    AITutorChatView(session: session) { updated in
-                        tutorManager.save(session: updated)
-                    }
+            .fullScreenCover(item: $selectedSession) { session in
+                AITutorChatView(session: session) { updated in
+                    tutorManager.save(session: updated)
                 }
             }
             .sheet(isPresented: $showNotes) {
@@ -348,7 +346,7 @@ struct AITutorView: View {
                         )
                         .frame(width: 160, height: 160)
 
-                    OwlCharacterView(size: 110)
+                    MascotView(color: Color(hex: "#7C3AED"), mood: .celebrating, size: 110)
                 }
 
                 VStack(spacing: 6) {
@@ -399,7 +397,6 @@ struct AITutorView: View {
                         SessionRow(session: session)
                             .onTapGesture {
                                 selectedSession = session
-                                showChat = true
                             }
                             .contextMenu {
                                 Button(role: .destructive) {
@@ -466,7 +463,6 @@ struct AITutorView: View {
         Button {
             let newSession = tutorManager.newSession()
             selectedSession = newSession
-            showChat = true
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: "plus.bubble.fill")
@@ -508,8 +504,7 @@ private struct SessionRow: View {
                         )
                     )
                     .frame(width: 44, height: 44)
-                Text("🦉")
-                    .font(.system(size: 20))
+                MascotView(color: .white, mood: .idle, size: 26)
             }
 
             VStack(alignment: .leading, spacing: 4) {
@@ -582,8 +577,7 @@ struct OllyNotesSheet: View {
 
                 if tutorManager.notes.isEmpty {
                     VStack(spacing: 16) {
-                        Text("🦉")
-                            .font(.system(size: 52))
+                        MascotView(color: Color(hex: "#7C3AED"), mood: .thinking, size: 60)
                         Text("Noch keine Notizen")
                             .font(.system(size: 18, weight: .semibold))
                             .foregroundStyle(.white.opacity(0.6))
@@ -675,7 +669,7 @@ struct TutorHomeWidget: View {
                         )
                         .frame(width: 58, height: 58)
 
-                    OwlCharacterView(isTalking: isTalking, size: 48)
+                    MascotView(color: Color(hex: "#7C3AED"), mood: isTalking ? .talking : .idle, size: 42)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {

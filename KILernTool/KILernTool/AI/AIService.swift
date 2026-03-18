@@ -150,21 +150,28 @@ final class AIService {
     /// Generates a list of LernSetCards from the collected parameters.
     func generateLernSet(
         fach: String,
-        klassenstufe: String,
         thema: String,
         schwierigkeit: String,
+        besonderheiten: String = "",
         anzahl: Int
     ) async throws -> [LernSetCard] {
 
         let feedbackCtx = FeedbackManager.shared.feedbackContext
         let systemPrompt = """
         Du bist ein erfahrener Lehrer. Erstelle genau \(anzahl) Lernkarten.
-        Fach: \(fach), Klassenstufe: \(klassenstufe), Thema: \(thema), Schwierigkeit: \(schwierigkeit).
+        Fach: \(fach), Thema: \(thema), Schwierigkeit: \(schwierigkeit).
+        \(besonderheiten.isEmpty ? "" : "Besondere Wünsche: \(besonderheiten)\n")
         \(feedbackCtx.isEmpty ? "" : "\n" + feedbackCtx + "\n")
+
+        Qualitätsregeln:
+        - Erstelle Fragen auf verschiedenen Niveaustufen: ~40% Faktenwissen, ~40% Verständnis/Anwendung, ~20% Analyse.
+        - Die wrongAnswers sollen häufige Schüler-Fehlannahmen oder verwandte Konzepte abbilden, NICHT zufällig falsche Antworten.
+        - Decke alle relevanten Teilbereiche des Themas proportional ab.
+        - Variiere die Frageformulierungen – nicht alle mit "Was ist…?" beginnen.
+        - Antworte IMMER mit exakt \(anzahl) Karten, auch wenn das Thema klein wirkt.
+
         Antworte NUR mit einem gültigen JSON-Array (kein Markdown, keine Erklärung):
         [{"question":"...","answer":"...","wrongAnswer1":"...","wrongAnswer2":"...","wrongAnswer3":"..."}, ...]
-
-        Die drei wrongAnswers sollen plausibel klingen, aber eindeutig falsch sein.
         """
 
         let raw = try await chat(messages: [AIMessage(role: "system", content: systemPrompt)])
@@ -194,6 +201,13 @@ final class AIService {
                 wrongAnswer3: $0.wrongAnswer3
             )
         }
+    }
+
+    // MARK: - Simple Completion
+
+    /// Sends a single user prompt and returns the response. Returns nil on error (non-throwing).
+    func complete(prompt: String) async -> String? {
+        return try? await chat(messages: [AIMessage(role: "user", content: prompt)])
     }
 
     // MARK: - Answer Evaluation
@@ -242,6 +256,8 @@ final class AIService {
         let beschreibung: String
         let thema: String
         let schwierigkeit: String
+        let typ: String?
+        let dauerMinuten: Int?
     }
 
     struct RawLernPlanTag: Codable {
@@ -253,56 +269,73 @@ final class AIService {
         let tage: [RawLernPlanTag]
     }
 
-    /// Generates a structured learning plan. Pass scanned images if available.
+    /// Generates a structured learning plan.
+    /// Pass `extractedContent` from `analyzeBookPages()` when images were uploaded.
     func generateLernPlan(
         fach: String,
         klassenstufe: String,
         thema: String,
         besonderheiten: String,
         testDatum: Date,
-        images: [UIImage]
+        images: [UIImage] = [],
+        extractedContent: String = ""
     ) async throws -> RawLernPlan {
         guard !apiKey.isEmpty else { throw AIError.missingAPIKey }
 
         let dayCount = max(1, Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: Date()), to: Calendar.current.startOfDay(for: testDatum)).day ?? 1)
 
         let feedbackCtx = FeedbackManager.shared.feedbackContext
+
+        // Build the book-content section if we have extracted material
+        let bookSection: String
+        if !extractedContent.isEmpty {
+            bookSection = """
+
+            ── INHALT AUS BUCHSEITEN (aus Foto-Analyse) ──
+            \(extractedContent)
+            ── ENDE BUCHINHALT ──
+
+            WICHTIG: Erstelle Lernaufgaben, die DIREKT auf den oben extrahierten Buchinhalt eingehen.
+            Nutze die konkreten Themen, Konzepte und Aufgabentypen aus dem Buch.
+            Das "thema"-Feld jeder Aufgabe muss exakt auf die Buchinhalte verweisen.
+            """
+        } else {
+            bookSection = ""
+        }
+
         let systemPrompt = """
         Du bist ein erfahrener Lehrer und Lerncoach.
         Erstelle einen strukturierten Lernplan mit genau \(dayCount) Lerntagen.
         Fach: \(fach), Klassenstufe: \(klassenstufe).
         Prüfungsthema: \(thema).
         Testtermin-Details und Besonderheiten: \(besonderheiten).
-        \(feedbackCtx.isEmpty ? "" : feedbackCtx + "\n")
+        \(feedbackCtx.isEmpty ? "" : feedbackCtx + "\n")\(bookSection)
 
         Regeln:
-        - Verteile die Themen sinnvoll über alle \(dayCount) Tage.
-        - Baue am Ende Wiederholungstage ein.
+        - Verteile die Themen sinnvoll über alle \(dayCount) Tage; Grundlagen vor Anwendungen.
         - Max. 2 Aufgaben pro Tag.
         - Das Feld "thema" muss sehr präzise sein (wird für KI-Lernkartengeneration genutzt).
         - schwierigkeit: "einfach", "mittel" oder "schwer".
+        - Vergib für jede Aufgabe einen "typ":
+          "neuerStoff" (neue Inhalte lernen), "uebung" (Aufgaben lösen/schreiben),
+          "wiederholung" (bereits Gelerntes festigen), "simulation" (testähnliche Bedingungen).
+        - Vergib "dauerMinuten" (15–45 je nach Aufgabenmenge).
+        - Die letzten 2 Tage vor dem Test: ausschließlich "wiederholung" und "simulation".
 
         Antworte NUR mit gültigem JSON (kein Markdown):
-        {"titel":"Planname","tage":[{"aufgaben":[{"titel":"...","beschreibung":"...","thema":"präzises Thema für Lernkartengenerierung, Fach \(fach), Klasse \(klassenstufe)","schwierigkeit":"mittel"}]}]}
+        {"titel":"Planname","tage":[{"aufgaben":[{"titel":"...","beschreibung":"...","thema":"präzises Thema für Lernkartengenerierung, Fach \(fach), Klasse \(klassenstufe)","schwierigkeit":"mittel","typ":"neuerStoff","dauerMinuten":30}]}]}
         Exakt \(dayCount) Objekte im tage-Array.
         """
 
-        let userText: String
-        if images.isEmpty {
-            userText = "Erstelle den Lernplan. Thema: \(thema). Besonderheiten: \(besonderheiten)"
-        } else {
-            userText = "Analysiere die Bilder der Buchseiten und erstelle den Lernplan. Thema: \(thema). Besonderheiten: \(besonderheiten)"
-        }
+        let userText = extractedContent.isEmpty
+            ? "Erstelle den Lernplan. Thema: \(thema). Besonderheiten: \(besonderheiten)"
+            : "Erstelle den Lernplan basierend auf dem extrahierten Buchinhalt. Thema: \(thema). Besonderheiten: \(besonderheiten)"
 
-        let raw: String
-        if images.isEmpty {
-            raw = try await chat(messages: [
-                AIMessage(role: "system", content: systemPrompt),
-                AIMessage(role: "user", content: userText)
-            ])
-        } else {
-            raw = try await chatWithImages(systemPrompt: systemPrompt, userText: userText, images: images)
-        }
+        // Always use text chat for plan generation (images were already analyzed separately)
+        let raw = try await chat(messages: [
+            AIMessage(role: "system", content: systemPrompt),
+            AIMessage(role: "user", content: userText)
+        ])
 
         let cleaned = raw
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -356,6 +389,7 @@ final class AIService {
         let systemPrompt = """
         Du bist ein erfahrener Lehrer in Deutschland. Erstelle einen vollständigen Schultest.
         Antworte NUR mit gültigem JSON (kein Markdown, keine Erklärungen außerhalb des JSON).
+        Kalibriere Schwierigkeit und Sprache strikt auf die angegebene Klassenstufe.
 
         JSON-Format (exakt):
         {
@@ -392,6 +426,9 @@ final class AIService {
         - Erstelle exakt \(anzahlFragen) Aufgaben verteilt über sinnvolle Sektionen.
         - Steigende Schwierigkeit innerhalb der Sektionen.
         - Gesamtpunkte müssen der Summe aller Aufgabenpunkte entsprechen.
+        - Realistischer Punkterahmen: bei \(anzahlFragen) Aufgaben sind 10–50 Gesamtpunkte üblich.
+        - Jede Sektion enthält eine sinnvolle Mischung verschiedener Aufgabentypen.
+        - Bei "rechenweg"-Aufgaben in Mathe/Physik/Chemie: Gib im Aufgabentext sinnvolle Zwischenschritte als Hinweis vor.
         - Für Mathe/Physik: bevorzugt "rechenweg" und "freitext".
         - Für Bio/Chemie: bevorzugt "diagramm" und "freitext".
         - Für Sprachen: bevorzugt "freitext" und "lueckentext".
@@ -546,7 +583,12 @@ final class AIService {
         let system = """
         Du bist ein Lernassistent. Analysiere die Bilder von Buchseiten oder Texten und fasse den Inhalt zusammen.
         \(laengeAnweisung)
-        Antworte auf Deutsch. Keine JSON-Ausgabe – nur den Fließtext der Zusammenfassung.
+
+        Strukturierungsregeln:
+        - Beginne mit einer 1-Satz-Kernaussage, die das Wichtigste auf den Punkt bringt.
+        - Hebe alle Fachbegriffe und Formeln mit **Fettschrift** hervor.
+        - Verwende Spiegelstriche (- ) für Aufzählungen und Merksätze.
+        - Antworte auf Deutsch. Keine JSON-Ausgabe – nur formatierten Markdown-Text.
         """
         return try await chatWithImages(systemPrompt: system,
                                         userText: "Fasse den Inhalt dieser Seiten zusammen.",
@@ -562,10 +604,14 @@ final class AIService {
         Fach: \(fach), Schwierigkeit: \(schwierigkeit).
         \(wuensche.isEmpty ? "" : "Besondere Wünsche: \(wuensche).")
 
+        Qualitätsregeln:
+        - Priorisiere Definitionen, Formeln und Kernkonzepte gegenüber peripheren Details.
+        - Jede Frage soll einen klar im Bild erkennbaren Fakt oder Begriff abfragen.
+        - wrongAnswers: Verwende verwandte Begriffe oder Konzepte, die ebenfalls im Bild vorkommen – NICHT beliebig falsche Antworten.
+        - Antworte IMMER mit exakt \(anzahl) Karten.
+
         Antworte NUR mit einem gültigen JSON-Array (kein Markdown):
         [{"question":"...","answer":"...","wrongAnswer1":"...","wrongAnswer2":"...","wrongAnswer3":"..."}, ...]
-
-        Die drei wrongAnswers sollen plausibel klingen aber eindeutig falsch sein.
         """
         let raw = try await chatWithImages(systemPrompt: system,
                                            userText: "Erstelle \(anzahl) Lernkarten aus dem Inhalt dieser Seiten.",
@@ -613,6 +659,51 @@ final class AIService {
             AIMessage(role: "system", content: systemPrompt),
             AIMessage(role: "user",   content: userMsg)
         ])
+    }
+
+    // MARK: - Book Page Analysis
+
+    struct BookPageAnalysis {
+        /// Short topic chips extracted from the images (e.g. "Quadratische Gleichungen")
+        let topics: [String]
+        /// Full extracted content — used as additional AI context in plan generation
+        let fullText: String
+    }
+
+    /// Step 1 of the image-based lernplan flow: OCR + content extraction from book pages.
+    /// Call this after the user uploads photos, BEFORE calling generateLernPlan.
+    func analyzeBookPages(images: [UIImage]) async throws -> BookPageAnalysis {
+        let systemPrompt = """
+        Du bist ein Experte für Bildungsanalyse. Analysiere die Fotos von Schulbuchseiten oder Unterrichtsmaterialien.
+        Extrahiere alle lernrelevanten Inhalte präzise.
+
+        Antworte IMMER in diesem exakten Format (auf Deutsch):
+        THEMEN: [Kommagetrennte Liste der Hauptthemen, max. 6]
+        KONZEPTE: [Wichtige Definitionen, Formeln, Regeln, Fachbegriffe]
+        AUFGABENTYPEN: [Erkennbare Übungs- oder Aufgabentypen aus dem Buch]
+        ZUSAMMENFASSUNG: [Kurze Zusammenfassung des Lerninhalts, 2-4 Sätze]
+
+        Sei präzise und fokussiere auf lernplan-relevante Inhalte.
+        """
+        let raw = try await chatWithImages(
+            systemPrompt: systemPrompt,
+            userText: "Analysiere diese Schulbuchseiten und extrahiere den gesamten Lerninhalt.",
+            images: images
+        )
+
+        // Parse THEMEN: line
+        var topics: [String] = []
+        for line in raw.components(separatedBy: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("THEMEN:") {
+                let rest = trimmed.dropFirst("THEMEN:".count).trimmingCharacters(in: .whitespaces)
+                topics = rest.components(separatedBy: ",")
+                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                    .filter { !$0.isEmpty && $0 != "-" }
+                break
+            }
+        }
+        return BookPageAnalysis(topics: topics, fullText: raw)
     }
 
     // MARK: - Image Helper

@@ -10,7 +10,7 @@ struct KILernsetPreviewView: View {
 
     var onSaved: ((LernSet) -> Void)? = nil
 
-    private let accent = Color(red: 0.38, green: 0.18, blue: 0.90)
+    private let accent = AppColors.brandPurple
     @State private var questionCard: LernSetCard? = nil
     @State private var showAddSheet: AddCardMode? = nil
 
@@ -62,8 +62,11 @@ struct KILernsetPreviewView: View {
                     Circle().fill(.ultraThinMaterial).frame(width: 36, height: 36)
                     Image(systemName: "xmark").font(.system(size: 13, weight: .semibold))
                 }
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Circle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Schließen")
             Spacer()
             Text("Vorschau")
                 .font(.system(size: 17, weight: .semibold, design: .rounded))
@@ -166,11 +169,12 @@ struct KILernsetPreviewView: View {
                             Image(systemName: "ellipsis")
                                 .font(.system(size: 14, weight: .medium))
                                 .foregroundStyle(.secondary)
-                                .padding(8)
+                                .frame(minWidth: 44, minHeight: 44)
                                 .contentShape(Rectangle())
                         }
                         .menuStyle(.button)
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Weitere Optionen")
                     }
                     .padding(.horizontal, 16).padding(.vertical, 12)
                     .background(idx % 2 == 0
@@ -219,6 +223,7 @@ struct KILernsetPreviewView: View {
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
+        .accessibilityLabel("Karte hinzufügen")
     }
 
     // MARK: - Bottom Buttons
@@ -265,7 +270,7 @@ struct KILernsetPreviewView: View {
 
 private struct TheoPreviewMessage: View {
     let cardCount: Int
-    private let accent = Color(red: 0.38, green: 0.18, blue: 0.90)
+    private let accent = AppColors.brandPurple
     private let fullText = "Tadaaa! 🎉 Ich hab **{count} Lernkarten** für dich erstellt!\nBist du zufrieden damit? Du kannst Karten bearbeiten oder direkt loslegen!"
 
     @State private var displayed: String = ""
@@ -430,6 +435,33 @@ private struct AddKICardsSheet: View {
     }
 }
 
+// MARK: - Chat Bubble
+
+private struct ChatBubble: View {
+    let message: ChatMessage
+    private let accent = AppColors.brandPurple
+
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 8) {
+            if message.sender == .ai { Spacer(minLength: 40) }
+            Text(message.text)
+                .font(.system(size: 15))
+                .foregroundStyle(message.sender == .user ? .white : .primary)
+                .padding(.horizontal, 14).padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(message.sender == .user
+                              ? AnyShapeStyle(LinearGradient(
+                                    colors: [accent, Color(red: 0.30, green: 0.52, blue: 0.98)],
+                                    startPoint: .topLeading, endPoint: .bottomTrailing))
+                              : AnyShapeStyle(Color(uiColor: .secondarySystemGroupedBackground)))
+                )
+            if message.sender == .user { Spacer(minLength: 40) }
+        }
+        .frame(maxWidth: .infinity, alignment: message.sender == .user ? .trailing : .leading)
+    }
+}
+
 // MARK: - Card Question View
 
 struct CardQuestionView: View {
@@ -441,7 +473,7 @@ struct CardQuestionView: View {
     @State private var isLoading: Bool = false
     @FocusState private var isFocused: Bool
 
-    private let accent = Color(red: 0.38, green: 0.18, blue: 0.90)
+    private let accent = AppColors.brandPurple
 
     var body: some View {
         ZStack {
@@ -599,6 +631,8 @@ struct CardQuestionView: View {
                                 .font(.system(size: 13, weight: .bold))
                                 .foregroundStyle(.white)
                         }
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
                     .transition(.scale.combined(with: .opacity))

@@ -84,7 +84,7 @@ struct AITutorChatView: View {
                 Circle()
                     .fill(Color(hex: "#7C3AED").opacity(0.4))
                     .frame(width: 38, height: 38)
-                OwlCharacterView(isTalking: isTalking, size: 30)
+                MascotView(color: .white, mood: isTalking ? .talking : isTyping ? .thinking : .idle, size: 28)
             }
 
             VStack(alignment: .leading, spacing: 2) {
@@ -173,11 +173,11 @@ struct AITutorChatView: View {
 
     private var welcomePlaceholder: some View {
         VStack(spacing: 20) {
-            OwlCharacterView(size: 90)
+            MascotView(color: Color(hex: "#7C3AED"), mood: .happy, size: 90)
                 .padding(.top, 20)
 
             VStack(spacing: 8) {
-                Text("Hallo! Ich bin Olly 🦉")
+                Text("Hallo! Ich bin Olly ✨")
                     .font(.system(size: 20, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                 Text("Wie kann ich dir heute beim Lernen helfen?")
@@ -378,8 +378,7 @@ struct AITutorChatView: View {
                 Color(hex: "#0F0C29").ignoresSafeArea()
                 VStack(spacing: 28) {
                     VStack(spacing: 8) {
-                        Text("🦉")
-                            .font(.system(size: 44))
+                        MascotView(color: Color(hex: "#7C3AED"), mood: .celebrating, size: 56)
                         Text(remindTitle ?? "Erinnerung")
                             .font(.system(size: 20, weight: .bold, design: .rounded))
                             .foregroundStyle(.white)
@@ -460,7 +459,7 @@ private struct MessageBubble: View {
                     Circle()
                         .fill(Color(hex: "#7C3AED").opacity(0.35))
                         .frame(width: 30, height: 30)
-                    Text("🦉").font(.system(size: 14))
+                    MascotView(color: .white, mood: .idle, size: 20)
                 }
             }
 
@@ -522,7 +521,7 @@ private struct TypingIndicator: View {
                 Circle()
                     .fill(Color(hex: "#7C3AED").opacity(0.35))
                     .frame(width: 30, height: 30)
-                Text("🦉").font(.system(size: 14))
+                MascotView(color: .white, mood: .thinking, size: 20)
             }
 
             HStack(spacing: 5) {

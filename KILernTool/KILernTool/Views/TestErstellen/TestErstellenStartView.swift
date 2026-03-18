@@ -8,9 +8,9 @@ struct TestErstellenStartView: View {
     @State private var showCreate = false
     @State private var showKorrigieren = false
     @State private var selectedTest: GeneratedTest? = nil
-    @State private var showIntro = true
+    @State private var showIntro = !UserDefaults.standard.bool(forKey: "introSeen_test")
 
-    private let accent = Color(red: 0.85, green: 0.25, blue: 0.45)
+    private let accent = AppColors.brandPink
 
     var body: some View {
         ZStack {
@@ -50,6 +50,7 @@ struct TestErstellenStartView: View {
                             .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Schließen")
                 }
             }
             .fullScreenCover(isPresented: $showCreate) {
@@ -65,14 +66,23 @@ struct TestErstellenStartView: View {
         }
 
         if showIntro {
-            MaxIntroOverlay {
-                withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) { showIntro = false }
+            ModeIntroView(
+                characterName: "Max",
+                characterRole: "KI-Testassistent",
+                gradientTop: Color(red: 0.85, green: 0.25, blue: 0.45),
+                gradientBottom: Color(red: 0.65, green: 0.15, blue: 0.55),
+                mascotColor: .white,
+                introText: "Hey, ich bin **Max** – dein KI-Testassistent! 📝\n\nMit mir erstellst du in Sekunden professionelle Tests – mit echten Aufgaben, Punktesystem und verschiedenen Fragetypen.\n\nGib mir einfach Fach und Thema – den Rest erledige ich für dich! 🚀",
+                defaultsKey: "introSeen_test"
+            ) {
+                withAnimation(.easeOut(duration: 0.35)) { showIntro = false }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { showCreate = true }
             }
-            .transition(.opacity.combined(with: .move(edge: .bottom)))
+            .transition(.opacity)
             .zIndex(20)
         }
         } // end outer ZStack
-        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: showIntro)
+        .animation(.easeOut(duration: 0.35), value: showIntro)
     }
 
     // MARK: - Create Button
@@ -240,125 +250,3 @@ struct TestErstellenStartView: View {
     }
 }
 
-// MARK: - Max Intro Overlay
-
-private struct MaxIntroOverlay: View {
-    let onDismiss: () -> Void
-
-    private let accent = Color(red: 0.85, green: 0.25, blue: 0.45)
-    private let fullText = "Hey! Ich bin **Max**, dein KI-Testassistent! 📝\n\nMit mir erstellst du in Sekunden professionelle Tests – mit echten Aufgaben, Punktesystem und verschiedenen Fragetypen.\n\nGib mir einfach Fach und Thema – den Rest erledige ich für dich! 🚀"
-
-    @State private var displayedText: String = ""
-    @State private var mascotMood: MascotMood = .talking
-    @State private var isDone: Bool = false
-    @State private var mascotScale: CGFloat = 0.7
-    @State private var cardOffset: CGFloat = 60
-
-    var body: some View {
-        ZStack {
-            Color.black.opacity(0.52).ignoresSafeArea()
-
-            VStack(spacing: 0) {
-                Spacer()
-
-                VStack(spacing: 24) {
-                    // Mascot
-                    ZStack {
-                        Circle()
-                            .fill(accent.opacity(0.12))
-                            .frame(width: 130, height: 130)
-                        MascotView(color: accent, mood: mascotMood, size: 100)
-                            .frame(width: 100, height: 114)
-                    }
-                    .scaleEffect(mascotScale)
-
-                    // Name badge
-                    HStack(spacing: 6) {
-                        Image(systemName: "checkmark.seal.fill")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(accent)
-                        Text("MAX · KI-Testassistent")
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .foregroundStyle(accent)
-                            .tracking(0.8)
-                    }
-                    .padding(.horizontal, 14).padding(.vertical, 6)
-                    .background(Capsule().fill(accent.opacity(0.10)))
-
-                    // Typewriter text
-                    Group {
-                        if isDone {
-                            Text(try! AttributedString(markdown: fullText,
-                                 options: AttributedString.MarkdownParsingOptions(
-                                     interpretedSyntax: .inlineOnlyPreservingWhitespace)))
-                        } else {
-                            Text(displayedText)
-                        }
-                    }
-                    .font(.system(size: 15))
-                    .foregroundStyle(.primary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity)
-
-                    // Loslegen button
-                    Button(action: onDismiss) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "checkmark.seal.fill")
-                                .font(.system(size: 15, weight: .semibold))
-                            Text("Los geht's!")
-                                .font(.system(size: 16, weight: .bold, design: .rounded))
-                        }
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 15)
-                        .background(
-                            RoundedRectangle(cornerRadius: 16)
-                                .fill(isDone
-                                      ? LinearGradient(colors: [accent, Color(red: 0.60, green: 0.18, blue: 0.75)],
-                                                       startPoint: .leading, endPoint: .trailing)
-                                      : LinearGradient(colors: [Color(uiColor: .tertiaryLabel)],
-                                                       startPoint: .leading, endPoint: .trailing))
-                                .shadow(color: isDone ? accent.opacity(0.38) : .clear, radius: 10, x: 0, y: 5)
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!isDone)
-                }
-                .padding(28)
-                .background(
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .fill(Color(uiColor: .systemBackground))
-                        .shadow(color: .black.opacity(0.18), radius: 32, x: 0, y: -6)
-                )
-                .offset(y: cardOffset)
-            }
-            .ignoresSafeArea(edges: .bottom)
-        }
-        .onAppear {
-            withAnimation(.spring(response: 0.55, dampingFraction: 0.72)) {
-                mascotScale = 1.0
-                cardOffset = 0
-            }
-            startTypewriter()
-        }
-    }
-
-    private func startTypewriter() {
-        Task {
-            var idx = fullText.startIndex
-            while idx < fullText.endIndex {
-                let remaining = fullText.distance(from: idx, to: fullText.endIndex)
-                let step = min(3, remaining)
-                let nextIdx = fullText.index(idx, offsetBy: step)
-                displayedText = String(fullText[fullText.startIndex..<nextIdx])
-                idx = nextIdx
-                try? await Task.sleep(nanoseconds: 12_000_000)
-            }
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                mascotMood = .happy
-                isDone = true
-            }
-        }
-    }
-}

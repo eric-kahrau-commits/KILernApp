@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>Open Learn</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Open Learn benötigt Zugriff auf deine Kamera, um Buchseiten, Vokabeln und Testergebnisse zu fotografieren und direkt in Lernmaterial umzuwandeln.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Open Learn benötigt Zugriff auf deine Fotos, um Buchseiten, Lernmaterial und Testergebnisse aus deiner Galerie hochzuladen.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Open Learn möchte erstellte Lernmaterialien in deiner Fotobibliothek speichern.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.7060054417-oi00cj78t17t0ufo91gedh2a5hbu4m9p</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.openlearn.app</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>openlearn</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

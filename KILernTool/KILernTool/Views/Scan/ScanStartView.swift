@@ -8,9 +8,9 @@ struct ScanStartView: View {
 
     @State private var showSetup = false
     @State private var selectedSet: LernSet? = nil
-    @State private var showIntro = true
+    @State private var showIntro = !UserDefaults.standard.bool(forKey: "introSeen_scan")
 
-    private let accent = Color(red: 0.12, green: 0.58, blue: 0.46)
+    private let accent = AppColors.brandTeal
     private let kristinRed = Color(red: 0.85, green: 0.20, blue: 0.22)
     private let gradient = LinearGradient(
         colors: [Color(red: 0.12, green: 0.58, blue: 0.46), Color(red: 0.20, green: 0.80, blue: 0.60)],
@@ -49,14 +49,23 @@ struct ScanStartView: View {
         }
 
         if showIntro {
-            KristinIntroOverlay {
-                withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) { showIntro = false }
+            ModeIntroView(
+                characterName: "Kristin",
+                characterRole: "KI-Scan-Assistentin",
+                gradientTop: Color(red: 0.85, green: 0.20, blue: 0.22),
+                gradientBottom: Color(red: 0.65, green: 0.10, blue: 0.10),
+                mascotColor: .white,
+                introText: "Hey, ich bin **Kristin** – deine KI-Scan-Assistentin! 📱\n\nIch lese deine Buchseiten und Texte, erkenne den Inhalt automatisch und erstelle daraus eine **Zusammenfassung** oder ein komplettes **Lernset**.\n\nEinfach fotografieren – ich erledige den Rest! ✨",
+                defaultsKey: "introSeen_scan"
+            ) {
+                withAnimation(.easeOut(duration: 0.35)) { showIntro = false }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { showSetup = true }
             }
-            .transition(.opacity.combined(with: .move(edge: .bottom)))
+            .transition(.opacity)
             .zIndex(20)
         }
         } // outer ZStack
-        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: showIntro)
+        .animation(.easeOut(duration: 0.35), value: showIntro)
     }
 
     // MARK: - Nav Bar
@@ -68,7 +77,10 @@ struct ScanStartView: View {
                     Circle().fill(.ultraThinMaterial).frame(width: 36, height: 36)
                     Image(systemName: "xmark").font(.system(size: 13, weight: .semibold))
                 }
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Circle())
             }
+            .accessibilityLabel("Schließen")
             .buttonStyle(.plain)
             Spacer()
             Text("Scannen")
@@ -181,7 +193,7 @@ struct ScanSetupView: View {
     @State private var selectedSubject: String = Subject.all.first?.name ?? ""
     @State private var showScanner = false
 
-    private let accent = Color(red: 0.12, green: 0.58, blue: 0.46)
+    private let accent = AppColors.brandTeal
 
     private var canProceed: Bool {
         !scanName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -359,163 +371,3 @@ struct ScanSetupView: View {
     }
 }
 
-// MARK: - Kristin Intro Overlay
-
-private struct KristinIntroOverlay: View {
-    let onDismiss: () -> Void
-
-    private let kristinRed = Color(red: 0.85, green: 0.20, blue: 0.22)
-    private let fullText = "Hey! Ich bin **Kristin**, deine KI-Scan-Assistentin! 📱\n\nIch lese deine Buchseiten und Texte, erkenne den Inhalt automatisch und erstelle daraus eine **Zusammenfassung** oder ein komplettes **Lernset**.\n\nEinfach fotografieren – ich erledige den Rest! ✨"
-
-    @State private var displayedText: String = ""
-    @State private var mascotMood: MascotMood = .thinking
-    @State private var isDone: Bool = false
-    @State private var mascotScale: CGFloat = 0.65
-    @State private var cardOffset: CGFloat = 80
-    @State private var beamOffset: CGFloat = -65
-    @State private var pulseScale: CGFloat = 0.85
-    @State private var pulseOpacity: Double = 0.7
-
-    var body: some View {
-        ZStack {
-            Color.black.opacity(0.52).ignoresSafeArea()
-
-            VStack(spacing: 0) {
-                Spacer()
-
-                VStack(spacing: 22) {
-                    // Mascot with scanning beam animation
-                    ZStack {
-                        // Pulsing outer ring
-                        Circle()
-                            .stroke(kristinRed.opacity(0.35), lineWidth: 3)
-                            .frame(width: 140, height: 140)
-                            .scaleEffect(pulseScale)
-                            .opacity(pulseOpacity)
-
-                        // Background glow
-                        Circle()
-                            .fill(kristinRed.opacity(0.10))
-                            .frame(width: 132, height: 132)
-
-                        // Mascot
-                        MascotView(color: kristinRed, mood: mascotMood, size: 96)
-                            .frame(width: 96, height: 110)
-
-                        // Scanning laser beam (clipped to circle)
-                        Circle()
-                            .fill(.clear)
-                            .frame(width: 132, height: 132)
-                            .overlay(
-                                Rectangle()
-                                    .fill(LinearGradient(
-                                        colors: [.clear, kristinRed.opacity(0.55), .clear],
-                                        startPoint: .top, endPoint: .bottom
-                                    ))
-                                    .frame(height: 20)
-                                    .offset(y: beamOffset)
-                            )
-                            .clipShape(Circle())
-                    }
-                    .scaleEffect(mascotScale)
-                    .onAppear {
-                        withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) {
-                            beamOffset = 65
-                        }
-                        withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
-                            pulseScale = 1.18
-                            pulseOpacity = 0
-                        }
-                    }
-
-                    // Name badge
-                    HStack(spacing: 6) {
-                        Image(systemName: "doc.viewfinder.fill")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(kristinRed)
-                        Text("KRISTIN · KI-Scan-Assistentin")
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .foregroundStyle(kristinRed)
-                            .tracking(0.6)
-                    }
-                    .padding(.horizontal, 14).padding(.vertical, 6)
-                    .background(Capsule().fill(kristinRed.opacity(0.10)))
-
-                    // Typewriter text
-                    Group {
-                        if isDone {
-                            Text(try! AttributedString(markdown: fullText,
-                                 options: AttributedString.MarkdownParsingOptions(
-                                     interpretedSyntax: .inlineOnlyPreservingWhitespace)))
-                        } else {
-                            Text(displayedText)
-                        }
-                    }
-                    .font(.system(size: 15))
-                    .foregroundStyle(.primary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity)
-
-                    // Los geht's button
-                    Button(action: onDismiss) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "doc.viewfinder.fill")
-                                .font(.system(size: 15, weight: .semibold))
-                            Text("Scan starten!")
-                                .font(.system(size: 16, weight: .bold, design: .rounded))
-                        }
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 15)
-                        .background(
-                            RoundedRectangle(cornerRadius: 16)
-                                .fill(isDone
-                                      ? LinearGradient(
-                                            colors: [kristinRed, Color(red: 0.60, green: 0.10, blue: 0.10)],
-                                            startPoint: .leading, endPoint: .trailing)
-                                      : LinearGradient(colors: [Color(uiColor: .tertiaryLabel)],
-                                                       startPoint: .leading, endPoint: .trailing))
-                                .shadow(color: isDone ? kristinRed.opacity(0.40) : .clear, radius: 10, x: 0, y: 5)
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!isDone)
-                }
-                .padding(26)
-                .background(
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .fill(Color(uiColor: .systemBackground))
-                        .shadow(color: .black.opacity(0.20), radius: 32, x: 0, y: -6)
-                )
-                .offset(y: cardOffset)
-            }
-            .ignoresSafeArea(edges: .bottom)
-        }
-        .onAppear {
-            withAnimation(.spring(response: 0.58, dampingFraction: 0.70)) {
-                mascotScale = 1.0
-                cardOffset = 0
-            }
-            startTypewriter()
-        }
-    }
-
-    private func startTypewriter() {
-        Task {
-            var idx = fullText.startIndex
-            while idx < fullText.endIndex {
-                let remaining = fullText.distance(from: idx, to: fullText.endIndex)
-                let step = min(3, remaining)
-                let nextIdx = fullText.index(idx, offsetBy: step)
-                displayedText = String(fullText[fullText.startIndex..<nextIdx])
-                idx = nextIdx
-                try? await Task.sleep(nanoseconds: 11_000_000)
-            }
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                mascotMood = .happy
-                isDone = true
-            }
-        }
-    }
-}

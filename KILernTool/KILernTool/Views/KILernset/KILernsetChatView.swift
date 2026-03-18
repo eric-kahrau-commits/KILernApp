@@ -8,28 +8,54 @@ struct KILernsetChatView: View {
     @StateObject private var viewModel = KILernsetViewModel()
     @EnvironmentObject var store: LernSetStore
     @Environment(\.dismiss) var dismiss
+    @FocusState private var themaFocused: Bool
 
-    @State private var inputMode: InputMode = .text
-    @State private var isListening = false
-    @FocusState private var isFocused: Bool
-
-    // Generation overlay
     @State private var isGeneratingOverlay = false
     @State private var generationProgress: Double = 0
 
-    enum InputMode { case text, voice }
+    private let accent = AppColors.brandPurple
 
-    private let accent = Color(red: 0.38, green: 0.18, blue: 0.90)
+    private var themenVorschläge: [String] {
+        switch subjectName {
+        case "Mathematik":  return ["Pythagoras", "Quadratische Gl.", "Statistik", "Trigonometrie", "Geometrie"]
+        case "Biologie":    return ["Photosynthese", "Zellteilung", "Genetik", "Ökosysteme", "Evolution"]
+        case "Chemie":      return ["Atombau", "Periodensystem", "Säuren & Basen", "Reaktionen", "Organische Chemie"]
+        case "Physik":      return ["Mechanik", "Elektromagnetismus", "Optik", "Thermodynamik", "Wellen"]
+        case "Geschichte":  return ["Weimarer Republik", "2. Weltkrieg", "Franz. Revolution", "Römer", "Kalter Krieg"]
+        case "Englisch":    return ["Simple Past", "Present Perfect", "Vokabeln", "Grammatik", "Textanalyse"]
+        case "Deutsch":     return ["Grammatik", "Literaturanalyse", "Rechtschreibung", "Aufsatz", "Gedichtinterpretation"]
+        case "Geographie":  return ["Klimazonen", "Kontinente", "Bevölkerung", "Wirtschaft", "Naturkatastrophen"]
+        case "Informatik":  return ["Algorithmen", "Datenstrukturen", "Python Basics", "Netzwerke", "Datenbanken"]
+        default:            return ["Grundlagen", "Zusammenfassung", "Prüfungsvorbereitung", "Fachbegriffe"]
+        }
+    }
+
+    private let schwierigkeitOptionen: [(label: String, subtitle: String, color: Color)] = [
+        ("Leicht",  "Grundwissen",    Color(red: 0.15, green: 0.70, blue: 0.40)),
+        ("Mittel",  "Gemischt",       Color(red: 0.86, green: 0.50, blue: 0.10)),
+        ("Schwer",  "Anspruchsvoll",  Color(red: 0.85, green: 0.22, blue: 0.22)),
+    ]
 
     var body: some View {
         ZStack {
             Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
             VStack(spacing: 0) {
                 navBar
-                checklistStrip
-                Divider()
-                chatScrollView
-                inputBar
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 22) {
+                        themaSection
+                        schwierigkeitSection
+                        anzahlSection
+                        besonderheitenSection
+                        if !viewModel.verlauf.isEmpty {
+                            verlaufSection
+                        }
+                        generateButton
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.top, 20)
+                    .padding(.bottom, 48)
+                }
             }
 
             if isGeneratingOverlay {
@@ -39,7 +65,8 @@ struct KILernsetChatView: View {
             }
         }
         .animation(.spring(response: 0.5, dampingFraction: 0.8), value: isGeneratingOverlay)
-        .onAppear { viewModel.startConversation() }
+        .toolbar(.hidden, for: .navigationBar)
+        .onAppear { viewModel.fach = subjectName }
         .onChange(of: viewModel.showPreview) { _, shown in
             if shown {
                 withAnimation { generationProgress = 100 }
@@ -68,19 +95,18 @@ struct KILernsetChatView: View {
                     Circle().fill(.ultraThinMaterial).frame(width: 36, height: 36)
                     Image(systemName: "xmark").font(.system(size: 13, weight: .semibold))
                 }
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Circle())
             }
             .buttonStyle(.plain)
-
             Spacer()
-
             VStack(spacing: 1) {
-                Text("KI Lernset erstellen")
+                Text("KI-Lernset erstellen")
                     .font(.system(size: 16, weight: .semibold, design: .rounded))
-                Text("Freier KI-Chat")
+                Text(subjectName)
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
-
             Spacer()
             Color.clear.frame(width: 36, height: 36)
         }
@@ -90,6 +116,202 @@ struct KILernsetChatView: View {
             Rectangle().fill(.primary.opacity(0.06)).frame(height: 0.5)
         }
     }
+
+    // MARK: - Thema
+
+    private var themaSection: some View {
+        sectionCard(title: "Thema *") {
+            VStack(alignment: .leading, spacing: 0) {
+                TextField("z. B. Photosynthese, Pythagoras …", text: $viewModel.thema)
+                    .font(.system(size: 16))
+                    .focused($themaFocused)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 14)
+                    .padding(.bottom, 10)
+
+                Divider().padding(.leading, 16)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(themenVorschläge, id: \.self) { vorschlag in
+                            Button {
+                                viewModel.thema = vorschlag
+                                themaFocused = false
+                            } label: {
+                                Text(vorschlag)
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundStyle(viewModel.thema == vorschlag ? .white : accent)
+                                    .padding(.horizontal, 12).padding(.vertical, 6)
+                                    .background(
+                                        Capsule().fill(
+                                            viewModel.thema == vorschlag
+                                                ? AnyShapeStyle(accent)
+                                                : AnyShapeStyle(accent.opacity(0.10))
+                                        )
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                            .animation(.spring(response: 0.25, dampingFraction: 0.8), value: viewModel.thema)
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                }
+            }
+        }
+    }
+
+    // MARK: - Schwierigkeit
+
+    private var schwierigkeitSection: some View {
+        sectionCard(title: "Schwierigkeit") {
+            HStack(spacing: 8) {
+                ForEach(schwierigkeitOptionen, id: \.label) { option in
+                    let isSelected = viewModel.schwierigkeit == option.label
+                    Button { viewModel.schwierigkeit = option.label } label: {
+                        VStack(spacing: 4) {
+                            Text(option.label)
+                                .font(.system(size: 14, weight: .bold, design: .rounded))
+                                .foregroundStyle(isSelected ? .white : .primary)
+                            Text(option.subtitle)
+                                .font(.system(size: 10))
+                                .foregroundStyle(isSelected ? .white.opacity(0.80) : .secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 13)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(isSelected
+                                      ? AnyShapeStyle(option.color)
+                                      : AnyShapeStyle(Color(uiColor: .tertiarySystemGroupedBackground)))
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .animation(.spring(response: 0.25, dampingFraction: 0.8), value: viewModel.schwierigkeit)
+                }
+            }
+            .padding(12)
+        }
+    }
+
+    // MARK: - Anzahl
+
+    private var anzahlSection: some View {
+        sectionCard(title: "Anzahl Fragen") {
+            VStack(spacing: 6) {
+                Text("\(Int(viewModel.anzahl))")
+                    .font(.system(size: 36, weight: .bold, design: .rounded))
+                    .foregroundStyle(accent)
+                    .contentTransition(.numericText())
+                    .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.anzahl)
+
+                HStack(spacing: 10) {
+                    Text("5")
+                        .font(.system(size: 12)).foregroundStyle(.secondary)
+                    Slider(value: $viewModel.anzahl, in: 5...30, step: 1)
+                        .tint(accent)
+                    Text("30")
+                        .font(.system(size: 12)).foregroundStyle(.secondary)
+                }
+
+                Text("Fragen werden generiert")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 14)
+        }
+    }
+
+    // MARK: - Besonderheiten
+
+    private var besonderheitenSection: some View {
+        sectionCard(title: "Besonderheiten (optional)") {
+            TextField("z. B. mit Beispielen, Fokus auf Formeln, für Prüfung …",
+                      text: $viewModel.besonderheiten, axis: .vertical)
+                .font(.system(size: 15))
+                .lineLimit(2...4)
+                .padding(16)
+        }
+    }
+
+    // MARK: - Verlauf
+
+    private var verlaufSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("ZULETZT VERWENDET")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(viewModel.verlauf, id: \.self) { thema in
+                        Button { viewModel.thema = thema } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "clock")
+                                    .font(.system(size: 10))
+                                Text(thema)
+                                    .font(.system(size: 13, weight: .medium))
+                            }
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 12).padding(.vertical, 7)
+                            .background(
+                                Capsule().fill(Color(uiColor: .secondarySystemGroupedBackground))
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Generate Button
+
+    @ViewBuilder
+    private var generateButton: some View {
+        VStack(spacing: 10) {
+            Button {
+                guard viewModel.canGenerate else { return }
+                themaFocused = false
+                generationProgress = 0
+                withAnimation { isGeneratingOverlay = true }
+                startFakeProgress()
+                Task { await viewModel.generateLernSet() }
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 16, weight: .semibold))
+                    Text("Lernset erstellen")
+                        .font(.system(size: 17, weight: .bold, design: .rounded))
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(LinearGradient(
+                            colors: [accent, Color(red: 0.30, green: 0.52, blue: 0.98)],
+                            startPoint: .leading, endPoint: .trailing
+                        ))
+                        .shadow(color: accent.opacity(viewModel.canGenerate ? 0.40 : 0.10),
+                                radius: 12, x: 0, y: 6)
+                )
+                .opacity(viewModel.canGenerate ? 1.0 : 0.45)
+            }
+            .buttonStyle(.plain)
+            .disabled(!viewModel.canGenerate)
+
+            if let err = viewModel.errorMessage {
+                Text(err)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
+            }
+        }
+    }
+
+    // MARK: - Helpers
 
     private func startFakeProgress() {
         Task {
@@ -103,334 +325,18 @@ struct KILernsetChatView: View {
         }
     }
 
-    // MARK: - Checklist Strip
-
-    private var checklistStrip: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(viewModel.checklist) { item in
-                    ChecklistChip(item: item)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-        }
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
-    }
-
-    // MARK: - Chat Scroll View
-
-    private var chatScrollView: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 12) {
-                    ForEach(viewModel.messages) { msg in
-                        ChatBubble(message: msg).id(msg.id)
-                    }
-
-                    if viewModel.isLoading { loadingIndicator }
-
-                    if let err = viewModel.errorMessage {
-                        Text(err)
-                            .font(.system(size: 13))
-                            .foregroundStyle(.red)
-                            .padding(.horizontal, 16)
-                            .multilineTextAlignment(.center)
-                    }
-
-                    if viewModel.allFieldsComplete && !viewModel.isLoading {
-                        generateButton
-                    }
-
-                    Color.clear.frame(height: 4).id("bottom")
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 16)
-                .padding(.bottom, 8)
-            }
-            .onChange(of: viewModel.messages.count) {
-                withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo("bottom") }
-            }
-            .onChange(of: viewModel.isLoading) {
-                withAnimation { proxy.scrollTo("bottom") }
-            }
-        }
-    }
-
-    // MARK: - Loading indicator
-
-    private var loadingIndicator: some View {
-        HStack {
-            HStack(spacing: 5) {
-                ForEach(0..<3, id: \.self) { i in
-                    Circle()
-                        .fill(accent.opacity(0.6))
-                        .frame(width: 8, height: 8)
-                        .scaleEffect(viewModel.isLoading ? 1.0 : 0.5)
-                        .animation(
-                            .easeInOut(duration: 0.5)
-                                .repeatForever()
-                                .delay(Double(i) * 0.15),
-                            value: viewModel.isLoading
-                        )
-                }
-            }
-            .padding(.horizontal, 16).padding(.vertical, 12)
-            .background(
-                RoundedRectangle(cornerRadius: 18)
-                    .fill(Color(uiColor: .secondarySystemGroupedBackground))
-            )
-            Spacer()
-        }
-    }
-
-    // MARK: - Generate Button
-
-    private var generateButton: some View {
-        Button {
-            generationProgress = 0
-            withAnimation { isGeneratingOverlay = true }
-            startFakeProgress()
-            Task { await viewModel.generateLernSet() }
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "sparkles").font(.system(size: 16, weight: .semibold))
-                Text("Lernset erstellen").font(.system(size: 16, weight: .bold, design: .rounded))
-            }
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 15)
-            .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(LinearGradient(
-                        colors: [accent, Color(red: 0.30, green: 0.52, blue: 0.98)],
-                        startPoint: .leading, endPoint: .trailing
-                    ))
-                    .shadow(color: accent.opacity(0.40), radius: 12, x: 0, y: 6)
-            )
-        }
-        .buttonStyle(.plain)
-        .padding(.top, 6)
-        .transition(.move(edge: .bottom).combined(with: .opacity))
-    }
-
-    // MARK: - Input Bar
-
-    private var inputBar: some View {
-        VStack(spacing: 0) {
-            Divider()
-            HStack(spacing: 10) {
-                // Toggle text / voice
-                Button {
-                    withAnimation(.spring(response: 0.3)) {
-                        inputMode = inputMode == .text ? .voice : .text
-                    }
-                } label: {
-                    ZStack {
-                        Circle()
-                            .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                            .frame(width: 38, height: 38)
-                        Image(systemName: inputMode == .text ? "mic" : "keyboard")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .buttonStyle(.plain)
-
-                if inputMode == .text {
-                    textField
-                } else {
-                    voiceButton
-                }
-            }
-            .padding(.horizontal, 14).padding(.vertical, 10)
-            .background(Color(uiColor: .systemBackground))
-        }
-    }
-
-    private var textField: some View {
-        HStack(spacing: 8) {
-            TextField("Antwort eingeben…", text: $viewModel.inputText, axis: .vertical)
-                .font(.system(size: 15))
-                .lineLimit(1...4)
-                .focused($isFocused)
-                .submitLabel(.send)
-                .onSubmit { viewModel.sendMessage() }
-
-            if !viewModel.inputText.isEmpty {
-                Button { viewModel.sendMessage() } label: {
-                    ZStack {
-                        Circle()
-                            .fill(LinearGradient(
-                                colors: [accent, Color(red: 0.30, green: 0.52, blue: 0.98)],
-                                startPoint: .topLeading, endPoint: .bottomTrailing
-                            ))
-                            .frame(width: 32, height: 32)
-                        Image(systemName: "arrow.up")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(.white)
-                    }
-                }
-                .buttonStyle(.plain)
-                .transition(.scale.combined(with: .opacity))
-            }
-        }
-        .padding(.horizontal, 14).padding(.vertical, 10)
-        .background(RoundedRectangle(cornerRadius: 20)
-            .fill(Color(uiColor: .secondarySystemGroupedBackground)))
-    }
-
-    private var voiceButton: some View {
-        // Placeholder integration point for SFSpeechRecognizer.
-        // To activate: inject a VoiceInputManager and bind its transcript to viewModel.inputText.
-        Button {
-            withAnimation(.spring(response: 0.3)) { isListening.toggle() }
-        } label: {
-            HStack(spacing: 10) {
-                ZStack {
-                    Circle()
-                        .fill(isListening
-                              ? Color.red.opacity(0.14)
-                              : accent.opacity(0.10))
-                        .frame(width: 42, height: 42)
-                    Image(systemName: isListening ? "waveform" : "mic.fill")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(isListening ? .red : accent)
-                        .symbolEffect(.pulse, isActive: isListening)
-                }
-                Text(isListening ? "Tippe zum Stoppen…" : "Tippe zum Sprechen")
-                    .font(.system(size: 15))
-                    .foregroundStyle(.secondary)
-                Spacer()
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 14).padding(.vertical, 10)
-            .background(RoundedRectangle(cornerRadius: 20)
-                .fill(Color(uiColor: .secondarySystemGroupedBackground)))
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-// MARK: - Checklist Chip
-
-struct ChecklistChip: View {
-    let item: ChecklistField
-    private let doneColor = Color(red: 0.18, green: 0.70, blue: 0.40)
-
-    var body: some View {
-        HStack(spacing: 6) {
-            ZStack {
-                Circle()
-                    .fill(item.isDone ? doneColor : Color.secondary.opacity(0.20))
-                    .frame(width: 18, height: 18)
-                if item.isDone {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.white)
-                        .transition(.scale.combined(with: .opacity))
-                }
-            }
-            .animation(.spring(response: 0.4, dampingFraction: 0.7), value: item.isDone)
-
-            Text(item.label)
-                .font(.system(size: 13, weight: item.isDone ? .semibold : .regular))
-                .foregroundStyle(item.isDone ? .primary : .secondary)
-        }
-        .padding(.horizontal, 12).padding(.vertical, 6)
-        .background(
-            Capsule()
-                .fill(item.isDone
-                      ? doneColor.opacity(0.10)
-                      : Color(uiColor: .tertiarySystemGroupedBackground))
-        )
-        .animation(.spring(response: 0.4, dampingFraction: 0.75), value: item.isDone)
-    }
-}
-
-// MARK: - Chat Bubble
-
-struct ChatBubble: View {
-    let message: ChatMessage
-    private let accent = Color(red: 0.38, green: 0.18, blue: 0.90)
-    private var isUser: Bool { message.sender == .user }
-
-    // Typewriter state – only used for AI messages
-    @State private var displayedText: String = ""
-    @State private var animationDone: Bool = false
-
-    var body: some View {
-        HStack(alignment: .bottom, spacing: 8) {
-            if isUser { Spacer(minLength: 60) }
-
-            if !isUser {
-                MascotView(
-                    color: accent,
-                    mood: animationDone ? .idle : .talking,
-                    size: 30
+    private func sectionCard<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title.uppercased())
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
+            content()
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(Color(uiColor: .secondarySystemGroupedBackground))
                 )
-                .frame(width: 30, height: 34)
-            }
-
-            Group {
-                if isUser || animationDone {
-                    Text(styledText(message.text))
-                } else {
-                    Text(displayedText)
-                }
-            }
-            .font(.system(size: 15))
-            .foregroundStyle(isUser ? Color.white : Color.primary)
-            .padding(.horizontal, 14).padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 18)
-                    .fill(isUser
-                          ? AnyShapeStyle(LinearGradient(
-                                colors: [accent, Color(red: 0.30, green: 0.52, blue: 0.98)],
-                                startPoint: .topLeading, endPoint: .bottomTrailing))
-                          : AnyShapeStyle(Color(uiColor: .secondarySystemGroupedBackground)))
-            )
-            .shadow(color: isUser ? accent.opacity(0.25) : .black.opacity(0.05),
-                    radius: 6, x: 0, y: 3)
-
-            if !isUser { Spacer(minLength: 60) }
         }
-        .transition(.move(edge: .bottom).combined(with: .opacity))
-        .onAppear {
-            if isUser {
-                animationDone = true
-            } else {
-                startTypewriter()
-            }
-        }
-    }
-
-    /// Fast typewriter: 4 characters per step, ~14ms between steps.
-    private func startTypewriter() {
-        let full = message.text
-        guard !full.isEmpty else { animationDone = true; return }
-        Task {
-            var idx = full.startIndex
-            while idx < full.endIndex {
-                let remaining = full.distance(from: idx, to: full.endIndex)
-                let step = min(4, remaining)
-                let nextIdx = full.index(idx, offsetBy: step)
-                displayedText = String(full[full.startIndex..<nextIdx])
-                idx = nextIdx
-                // Slight random jitter gives a more human feel
-                let baseNs: UInt64 = 14_000_000
-                let jitterNs = UInt64.random(in: 0...6_000_000)
-                try? await Task.sleep(nanoseconds: baseNs + jitterNs)
-            }
-            animationDone = true
-        }
-    }
-
-    private func styledText(_ raw: String) -> AttributedString {
-        (try? AttributedString(markdown: raw,
-             options: AttributedString.MarkdownParsingOptions(
-                interpretedSyntax: .inlineOnlyPreservingWhitespace)))
-        ?? AttributedString(raw)
     }
 }
 
@@ -438,17 +344,14 @@ struct ChatBubble: View {
 
 private struct TheoGeneratingOverlay: View {
     @Binding var progress: Double
-
-    private let accent = Color(red: 0.38, green: 0.18, blue: 0.90)
+    private let accent = AppColors.brandPurple
 
     var body: some View {
         ZStack {
             Color.black.opacity(0.55).ignoresSafeArea()
-
             VStack(spacing: 28) {
                 MascotView(color: accent, mood: .celebrating, size: 110)
                     .frame(height: 130)
-
                 VStack(spacing: 8) {
                     Text("Ich erstelle dein Lernset …")
                         .font(.system(size: 20, weight: .bold, design: .rounded))
@@ -457,8 +360,6 @@ private struct TheoGeneratingOverlay: View {
                         .font(.system(size: 14))
                         .foregroundStyle(.secondary)
                 }
-
-                // Progress ring
                 ZStack {
                     Circle()
                         .stroke(accent.opacity(0.15), lineWidth: 10)
@@ -468,8 +369,7 @@ private struct TheoGeneratingOverlay: View {
                         .stroke(
                             LinearGradient(
                                 colors: [accent, Color(red: 0.30, green: 0.52, blue: 0.98)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
+                                startPoint: .topLeading, endPoint: .bottomTrailing
                             ),
                             style: StrokeStyle(lineWidth: 10, lineCap: .round)
                         )

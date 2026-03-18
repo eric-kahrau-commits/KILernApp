@@ -6,9 +6,9 @@ struct KILernsetStartView: View {
 
     @State private var showCreator = false
     @State private var selectedSet: LernSet? = nil
-    @State private var showIntro = true
+    @State private var showIntro = !UserDefaults.standard.bool(forKey: "introSeen_kilernset")
 
-    private let accent = Color(red: 0.38, green: 0.18, blue: 0.90)
+    private let accent = AppColors.brandPurple
     private let aiGradient = LinearGradient(
         colors: [Color(red: 0.38, green: 0.18, blue: 0.90),
                  Color(red: 0.30, green: 0.52, blue: 0.98)],
@@ -32,16 +32,23 @@ struct KILernsetStartView: View {
             }
 
             if showIntro {
-                TheoIntroOverlay {
-                    withAnimation(.spring(response: 0.5, dampingFraction: 0.75)) {
-                        showIntro = false
-                    }
+                ModeIntroView(
+                    characterName: "Theo",
+                    characterRole: "KI-Lernassistent",
+                    gradientTop: Color(red: 0.38, green: 0.18, blue: 0.90),
+                    gradientBottom: Color(red: 0.22, green: 0.38, blue: 0.92),
+                    mascotColor: .white,
+                    introText: "Hey, ich bin **Theo** – dein persönlicher KI-Lernassistent! 🚀\n\nSag mir einfach Fach und Thema – und ich erstelle dir in Sekunden ein komplettes Lernset mit Fragen, Antworten und Erklärungen.\n\nPerfekt für Schule, Uni oder schnelles Lernen. Bereit?",
+                    defaultsKey: "introSeen_kilernset"
+                ) {
+                    withAnimation(.easeOut(duration: 0.35)) { showIntro = false }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { showCreator = true }
                 }
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                .transition(.opacity)
                 .zIndex(20)
             }
         }
-        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: showIntro)
+        .animation(.easeOut(duration: 0.35), value: showIntro)
         .fullScreenCover(isPresented: $showCreator) {
             KILernsetCreateView(onSaved: { savedSet in
                 showCreator = false
@@ -55,10 +62,11 @@ struct KILernsetStartView: View {
             NavigationStack {
                 LernsetViewerView(lernSet: set)
             }
+            .environmentObject(store)
         }
     }
 
-    // MARK: Nav Bar
+    // MARK: - Nav Bar
     private var navBar: some View {
         HStack {
             Button { dismiss() } label: {
@@ -66,6 +74,8 @@ struct KILernsetStartView: View {
                     Circle().fill(.ultraThinMaterial).frame(width: 36, height: 36)
                     Image(systemName: "xmark").font(.system(size: 13, weight: .semibold))
                 }
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Circle())
             }
             .buttonStyle(.plain)
             Spacer()
@@ -81,7 +91,7 @@ struct KILernsetStartView: View {
         }
     }
 
-    // MARK: Create Hero Button
+    // MARK: - Create Hero Button
     private var createHeroButton: some View {
         Button { showCreator = true } label: {
             HStack(spacing: 16) {
@@ -111,7 +121,7 @@ struct KILernsetStartView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: My Files
+    // MARK: - My Files
     @ViewBuilder
     private var myFilesSection: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -139,11 +149,7 @@ struct KILernsetStartView: View {
     private func lernSetRow(_ set: LernSet) -> some View {
         Button { selectedSet = set } label: {
             HStack(spacing: 14) {
-                MascotIconView(
-                    color: accent,
-                    size: 42,
-                    cornerRadius: 10
-                )
+                MascotIconView(color: accent, size: 42, cornerRadius: 10)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(set.name)
                         .font(.system(size: 15, weight: .semibold, design: .rounded))
@@ -165,120 +171,5 @@ struct KILernsetStartView: View {
             )
         }
         .buttonStyle(.plain)
-    }
-}
-
-// MARK: - Theo Intro Overlay
-
-private struct TheoIntroOverlay: View {
-    let onContinue: () -> Void
-
-    private let accent = Color(red: 0.38, green: 0.18, blue: 0.90)
-    private let introText = "Hey, ich bin **Theo** – dein persönlicher KI-Lernassistent! 🚀\n\nSag mir einfach Fach, Thema und wie viele Karten du brauchst – und ich erstelle dein perfektes Lernset in Sekunden.\n\nBereit? Dann lass uns loslegen! 🎉"
-
-    @State private var displayed: String = ""
-    @State private var textDone = false
-
-    var body: some View {
-        ZStack {
-            // Blurred backdrop
-            Color.black.opacity(0.55)
-                .ignoresSafeArea()
-                .blur(radius: 0)
-
-            VStack(spacing: 0) {
-                Spacer()
-
-                VStack(spacing: 24) {
-                    // Mascot
-                    MascotView(
-                        color: accent,
-                        mood: .talking,
-                        size: 100
-                    )
-                    .padding(.top, 32)
-
-                    // Name badge
-                    HStack(spacing: 6) {
-                        Text("THEO")
-                            .font(.system(size: 11, weight: .heavy, design: .rounded))
-                            .foregroundStyle(accent)
-                        Text("· KI-Lernassistent")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 6)
-                    .background(
-                        Capsule().fill(accent.opacity(0.10))
-                            .overlay(Capsule().stroke(accent.opacity(0.2), lineWidth: 1))
-                    )
-
-                    // Typewriter text
-                    Text(try! AttributedString(
-                        markdown: displayed,
-                        options: AttributedString.MarkdownParsingOptions(
-                            interpretedSyntax: .inlineOnlyPreservingWhitespace
-                        )
-                    ))
-                    .font(.system(size: 16))
-                    .foregroundStyle(.primary)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(4)
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 4)
-                    .animation(nil, value: displayed)
-
-                    // Button
-                    Button(action: onContinue) {
-                        HStack(spacing: 10) {
-                            Text("Loslegen!")
-                                .font(.system(size: 17, weight: .bold, design: .rounded))
-                            Image(systemName: "arrow.right")
-                                .font(.system(size: 14, weight: .bold))
-                        }
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(
-                            RoundedRectangle(cornerRadius: 16)
-                                .fill(
-                                    LinearGradient(
-                                        colors: [accent, Color(red: 0.30, green: 0.52, blue: 0.98)],
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
-                                )
-                                .shadow(color: accent.opacity(0.40), radius: 10, x: 0, y: 5)
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .opacity(textDone ? 1.0 : 0.5)
-                    .padding(.bottom, 32)
-                }
-                .padding(.horizontal, 28)
-                .background(
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .fill(Color(uiColor: .systemBackground))
-                        .shadow(color: .black.opacity(0.18), radius: 30, x: 0, y: -8)
-                )
-            }
-            .ignoresSafeArea(edges: .bottom)
-        }
-        .task { await typeText() }
-    }
-
-    private func typeText() async {
-        let full = introText
-        var idx = full.startIndex
-        while idx < full.endIndex {
-            let remaining = full.distance(from: idx, to: full.endIndex)
-            let step = min(3, remaining)
-            let next = full.index(idx, offsetBy: step)
-            displayed = String(full[full.startIndex..<next])
-            idx = next
-            try? await Task.sleep(nanoseconds: 12_000_000)
-        }
-        withAnimation { textDone = true }
     }
 }

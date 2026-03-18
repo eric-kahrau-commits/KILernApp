@@ -15,6 +15,7 @@ private struct TaskItem: Identifiable {
 struct MemorizeLearnView: View {
     let lernSet: LernSet
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var store: LernSetStore
 
     // Task structure: array of stations, each station is array of tasks
     @State private var stations: [[TaskItem]] = []
@@ -43,7 +44,7 @@ struct MemorizeLearnView: View {
     @State private var grandTotal = 0
     @State private var showStreakPopup: Bool = false
 
-    private let accent = Color(red: 0.15, green: 0.60, blue: 0.40)
+    private let accent = AppColors.brandMemorize
 
     // MARK: Body
 
@@ -121,6 +122,11 @@ struct MemorizeLearnView: View {
             if newPhase == .finalSummary {
                 let incremented = StreakManager.shared.markActivity()
                 if incremented { showStreakPopup = true }
+                store.saveSessionResult(
+                    lernSetId: lernSet.id,
+                    score: Double(grandCorrect) / Double(max(1, grandTotal)),
+                    mode: "auswendig"
+                )
             }
         }
     }
@@ -321,7 +327,7 @@ private struct MCTaskView: View {
     private var questionCard: some View {
         VStack(spacing: 10) {
             Text(card.question)
-                .font(.system(size: 18, weight: .semibold))
+                .font(.system(.title3).weight(.semibold))
                 .foregroundStyle(.primary)
                 .multilineTextAlignment(.center)
                 .padding(20)
@@ -363,16 +369,16 @@ private struct MCTaskView: View {
             HStack(spacing: 12) {
                 if hasAnswered && isCorrect {
                     Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.system(.title3).weight(.semibold))
                 } else if hasAnswered && isSelected && !isCorrect {
                     Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.system(.title3).weight(.semibold))
                 } else {
                     Circle().stroke(Color(uiColor: .tertiaryLabel), lineWidth: 1.5)
                         .frame(width: 20, height: 20)
                 }
                 Text(choice)
-                    .font(.system(size: 15, weight: .medium))
+                    .font(.body.weight(.medium))
                     .foregroundStyle(.primary)
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -443,7 +449,7 @@ private struct InputTaskView: View {
     private var questionCard: some View {
         VStack(spacing: 10) {
             Text(card.question)
-                .font(.system(size: 18, weight: .semibold))
+                .font(.system(.title3).weight(.semibold))
                 .foregroundStyle(.primary)
                 .multilineTextAlignment(.center)
                 .padding(20)
@@ -460,7 +466,7 @@ private struct InputTaskView: View {
     private var inputArea: some View {
         VStack(spacing: 12) {
             TextField("Deine Antwort …", text: $inputText, axis: .vertical)
-                .font(.system(size: 16))
+                .font(.body)
                 .lineLimit(3...6)
                 .focused($isFocused)
                 .padding(14)
@@ -520,14 +526,14 @@ private struct InputTaskView: View {
             if let correction {
                 Divider()
                 Text(correction)
-                    .font(.system(size: 15))
+                    .font(.body)
                     .foregroundStyle(.secondary)
             } else if correct {
                 Divider()
                 HStack(spacing: 6) {
                     Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).font(.system(size: 13))
                     Text(card.answer)
-                        .font(.system(size: 14))
+                        .font(.body)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -682,32 +688,13 @@ struct MemorizeFinalView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 32) {
-                Text("Lerneinheit abgeschlossen!")
-                    .font(.system(size: 24, weight: .bold, design: .rounded))
-                    .multilineTextAlignment(.center)
-                    .padding(.top, 40)
-
-                ZStack {
-                    Circle()
-                        .stroke(Color(uiColor: .tertiarySystemGroupedBackground), lineWidth: 14)
-                        .frame(width: 160, height: 160)
-                    Circle()
-                        .trim(from: 0, to: circleTrim * CGFloat(percentage / 100))
-                        .stroke(
-                            percentage >= 80 ? Color.green : (percentage >= 50 ? Color.orange : Color.red),
-                            style: StrokeStyle(lineWidth: 14, lineCap: .round)
-                        )
-                        .frame(width: 160, height: 160)
-                        .rotationEffect(.degrees(-90))
-                    Text("\(Int(round(percentage))) %")
-                        .font(.system(size: 36, weight: .bold, design: .rounded))
-                        .opacity(labelOpacity)
-                }
-                .padding(.vertical, 20)
+            VStack(spacing: 24) {
+                MascotResultHeader(percentage: percentage, color: accent)
+                    .padding(.horizontal, 18)
+                    .padding(.top, 24)
 
                 Text("\(correct) von \(total) richtig")
-                    .font(.system(size: 17, weight: .medium))
+                    .font(.body.weight(.medium))
                     .foregroundStyle(.secondary)
 
                 VStack(spacing: 12) {

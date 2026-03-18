@@ -7,10 +7,12 @@ struct CardSetStartView: View {
     @State private var showCreator = false
     @State private var setToEdit: LernSet? = nil
     @State private var selectedSet: LernSet? = nil
+    @State private var showIntro = !UserDefaults.standard.bool(forKey: "introSeen_cardset")
 
+    private let accent = AppColors.brandTealBright
     private let gradient = LinearGradient(
-        colors: [Color(red: 0.38, green: 0.18, blue: 0.90),
-                 Color(red: 0.30, green: 0.52, blue: 0.98)],
+        colors: [Color(red: 0.05, green: 0.68, blue: 0.58),
+                 Color(red: 0.10, green: 0.82, blue: 0.72)],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
@@ -30,7 +32,25 @@ struct CardSetStartView: View {
                     .padding(.bottom, 40)
                 }
             }
+
+            if showIntro {
+                ModeIntroView(
+                    characterName: "Jonathan",
+                    characterRole: "Karteikartentrainer",
+                    gradientTop: Color(red: 0.05, green: 0.68, blue: 0.58),
+                    gradientBottom: Color(red: 0.03, green: 0.48, blue: 0.42),
+                    mascotColor: .white,
+                    introText: "Hey, ich bin **Jonathan** – dein Karteikartentrainer! 🃏\n\nMit mir erstellst du deine eigenen Lernkarten – Vorderseite, Rückseite, sogar mit Bildern. Danach lernst du mit Karteikarten-, Multiple-Choice- oder Schreibmodus.\n\nPerfekt für alle Fächer. Los geht's!",
+                    defaultsKey: "introSeen_cardset"
+                ) {
+                    withAnimation(.easeOut(duration: 0.35)) { showIntro = false }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { showCreator = true }
+                }
+                .transition(.opacity)
+                .zIndex(20)
+            }
         }
+        .animation(.easeOut(duration: 0.35), value: showIntro)
         .fullScreenCover(isPresented: $showCreator) {
             CardSetCreateView()
                 .environmentObject(store)
@@ -53,7 +73,7 @@ struct CardSetStartView: View {
         }
     }
 
-    // MARK: Nav Bar
+    // MARK: - Nav Bar
     private var navBar: some View {
         HStack {
             Button { dismiss() } label: {
@@ -61,6 +81,8 @@ struct CardSetStartView: View {
                     Circle().fill(.ultraThinMaterial).frame(width: 36, height: 36)
                     Image(systemName: "xmark").font(.system(size: 13, weight: .semibold))
                 }
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Circle())
             }
             .buttonStyle(.plain)
             Spacer()
@@ -76,23 +98,17 @@ struct CardSetStartView: View {
         }
     }
 
-    // MARK: Create Hero Button
+    // MARK: - Create Hero Button
     private var createHeroButton: some View {
         Button { showCreator = true } label: {
             HStack(spacing: 16) {
-                ZStack {
-                    Circle()
-                        .fill(Color.white.opacity(0.18))
-                        .frame(width: 52, height: 52)
-                    Image(systemName: "rectangle.stack.badge.plus")
-                        .font(.system(size: 24, weight: .semibold))
-                        .foregroundStyle(.white)
-                }
+                MascotView(color: .white, mood: .talking, size: 52)
+                    .frame(width: 52, height: 52)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Neues Karteikarten-Set")
+                    Text("Neues Karteikartenset")
                         .font(.system(size: 18, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
-                    Text("Erstelle manuell deine eigenen Karten")
+                    Text("Jonathan hilft dir beim Erstellen deiner Karten")
                         .font(.system(size: 13))
                         .foregroundStyle(.white.opacity(0.80))
                 }
@@ -105,14 +121,13 @@ struct CardSetStartView: View {
             .background(
                 RoundedRectangle(cornerRadius: 20)
                     .fill(gradient)
-                    .shadow(color: Color(red: 0.38, green: 0.18, blue: 0.90).opacity(0.42),
-                            radius: 18, x: 0, y: 8)
+                    .shadow(color: accent.opacity(0.45), radius: 18, x: 0, y: 8)
             )
         }
         .buttonStyle(.plain)
     }
 
-    // MARK: My Files
+    // MARK: - My Files
     @ViewBuilder
     private var myFilesSection: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -121,12 +136,17 @@ struct CardSetStartView: View {
 
             let cardSets = store.lernSets.filter { !$0.isKIGenerated && !$0.isVokabelSet }
             if cardSets.isEmpty {
-                EmptyStateView(
-                    icon: "folder",
-                    title: "Noch keine Lernsets",
-                    subtitle: "Erstelle dein erstes Karteikarten-Set und es erscheint hier."
-                )
-                .frame(height: 220)
+                VStack(spacing: 16) {
+                    MascotView(color: accent, mood: .thinking, size: 56)
+                    Text("Noch keine Lernsets")
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    Text("Erstelle dein erstes Karteikartenset und es erscheint hier.")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 44)
             } else {
                 VStack(spacing: 10) {
                     ForEach(cardSets) { set in
@@ -142,11 +162,11 @@ struct CardSetStartView: View {
             HStack(spacing: 14) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 10)
-                        .fill(Color(red: 0.38, green: 0.18, blue: 0.90).opacity(0.12))
+                        .fill(accent.opacity(0.12))
                         .frame(width: 42, height: 42)
                     Image(systemName: "rectangle.stack.fill")
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(Color(red: 0.38, green: 0.18, blue: 0.90))
+                        .foregroundStyle(accent)
                 }
                 VStack(alignment: .leading, spacing: 3) {
                     Text(set.name)
@@ -170,32 +190,23 @@ struct CardSetStartView: View {
         }
         .buttonStyle(.plain)
         .contextMenu {
-            Button {
-                setToEdit = set
-            } label: {
+            Button { setToEdit = set } label: {
                 Label("Bearbeiten", systemImage: "pencil")
             }
-            Button(role: .destructive) {
-                store.delete(set)
-            } label: {
+            Button(role: .destructive) { store.delete(set) } label: {
                 Label("Löschen", systemImage: "trash")
             }
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            Button(role: .destructive) {
-                store.delete(set)
-            } label: {
+            Button(role: .destructive) { store.delete(set) } label: {
                 Label("Löschen", systemImage: "trash")
             }
         }
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
-            Button {
-                setToEdit = set
-            } label: {
+            Button { setToEdit = set } label: {
                 Label("Bearbeiten", systemImage: "pencil")
             }
-            .tint(.blue)
+            .tint(accent)
         }
     }
 }
-

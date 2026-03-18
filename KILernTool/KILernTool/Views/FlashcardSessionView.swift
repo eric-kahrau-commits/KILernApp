@@ -3,10 +3,11 @@ import SwiftUI
 /// Karteikarten-Modus: Vorderseite anzeigen → umklappen → Richtig/Falsch wählen. Am Ende Auswertung.
 struct FlashcardSessionView: View {
     let lernSet: LernSet
-    /// Wenn gesetzt, nur diese Karten verwenden (z. B. „Falsche wiederholen“).
+    /// Wenn gesetzt, nur diese Karten verwenden (z. B. „Falsche wiederholen”).
     var cardsToUse: [LernSetCard]?
 
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var store: LernSetStore
     @State private var sessionCards: [LernSetCard] = []
     @State private var currentIndex: Int = 0
     @State private var showBack: Bool = false
@@ -19,6 +20,9 @@ struct FlashcardSessionView: View {
     @State private var cardOpacity: Double = 1
     @State private var questionCard: LernSetCard? = nil
     @State private var showStreakPopup: Bool = false
+    @State private var sessionStreak: Int = 0
+    @State private var showCorrectFlash: Bool = false
+    @State private var showStreakBanner: Bool = false
 
     private var cards: [LernSetCard] {
         sessionCards.isEmpty ? (cardsToUse ?? lernSet.cards) : sessionCards
@@ -50,6 +54,23 @@ struct FlashcardSessionView: View {
                 sessionContent
             }
 
+            // Correct answer flash
+            if showCorrectFlash {
+                CorrectAnswerFlash(isVisible: $showCorrectFlash)
+                    .zIndex(8)
+            }
+
+            // 5-in-a-row streak banner
+            if showStreakBanner {
+                VStack {
+                    StreakBanner(streak: sessionStreak, color: subjectColor, isVisible: $showStreakBanner)
+                        .padding(.top, 8)
+                    Spacer()
+                }
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .zIndex(9)
+            }
+
             if showStreakPopup {
                 StreakPopupView(streak: StreakManager.shared.currentStreak) {
                     showStreakPopup = false
@@ -75,6 +96,11 @@ struct FlashcardSessionView: View {
             if finished {
                 let incremented = StreakManager.shared.markActivity()
                 if incremented { showStreakPopup = true }
+                store.saveSessionResult(
+                    lernSetId: lernSet.id,
+                    score: resultPercentage / 100.0,
+                    mode: "karteikarten"
+                )
             }
         }
     }
@@ -235,6 +261,9 @@ struct FlashcardSessionView: View {
     private func answer(correct: Bool) {
         let card = cards[currentIndex]
 
+        // SRS: Mastery-Level für diese Karte aktualisieren
+        store.updateCardMastery(lernSetId: lernSet.id, cardId: card.id, correct: correct)
+
         // Karte seitlich wegfliegen lassen: richtig → rechts, falsch → links
         let direction: CGFloat = correct ? 1 : -1
         withAnimation(.spring(response: 0.6, dampingFraction: 0.85)) {
@@ -245,8 +274,14 @@ struct FlashcardSessionView: View {
         // Bewertungsdaten sofort aktualisieren
         if correct {
             correctIndices.insert(card.id)
+            sessionStreak += 1
+            showCorrectFlash = true
+            if sessionStreak % 5 == 0 {
+                showStreakBanner = true
+            }
         } else {
             wrongCards.append(card)
+            sessionStreak = 0
         }
 
         // Nach kurzer Zeit nächste Karte einblenden oder Auswertung zeigen
@@ -279,6 +314,7 @@ struct FlashcardSessionView: View {
         correctIndices = []
         wrongCards = []
         isFinished = false
+        sessionStreak = 0
         withAnimation(.easeOut(duration: 0.25)) { }
     }
 
@@ -322,12 +358,10 @@ private struct FlashcardResultsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 32) {
-                Text("Auswertung")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                    .foregroundStyle(.primary)
-
-                percentageRing
+            VStack(spacing: 24) {
+                MascotResultHeader(percentage: percentage)
+                    .padding(.horizontal, 18)
+                    .padding(.top, 24)
 
                 Text("\(correctCount) von \(totalCount) richtig")
                     .font(.system(size: 17, weight: .medium))

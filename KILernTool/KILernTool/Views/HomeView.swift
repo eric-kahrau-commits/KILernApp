@@ -8,8 +8,8 @@ struct HomeView: View {
     var onNavigateToLearn: (() -> Void)? = nil
 
     @State private var fullGreeting: String = ""
-    @State private var visibleCount: Int = 0
-    @State private var typingTimer: Timer?
+    @State private var displayedGreeting: String = ""
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedPlan: LernPlan? = nil
     @State private var showZuletztSet: LernSet? = nil
     @State private var showKILernset = false
@@ -19,10 +19,7 @@ struct HomeView: View {
     @State private var showTutor = false
 
     private let userName: String = "Eric"
-    private let learnGradient = LinearGradient(
-        colors: [Color(red: 0.38, green: 0.18, blue: 0.90), Color(red: 0.10, green: 0.48, blue: 0.92)],
-        startPoint: .topLeading, endPoint: .bottomTrailing
-    )
+    private let learnGradient = AppGradients.learn
 
     private var activePlan: LernPlan? {
         lernPlanStore.plans.first { $0.daysUntilTest >= 0 }
@@ -60,7 +57,10 @@ struct HomeView: View {
                 // 3. Hero CTA
                 learnNowButton
 
-                // 4. Schnellzugriff
+                // 4. Olly – KI Lernbegleiter
+                TutorHomeWidget { showTutor = true }
+
+                // 5. Schnellzugriff
                 SchnellaktionenWidget(
                     onKILernset: { showKILernset = true },
                     onVokabeln:  { showVokabel = true },
@@ -108,17 +108,25 @@ struct HomeView: View {
 
                 // 12. Tagesquote
                 TagesquoteWidget()
-
-                // 13. Olly – KI Lernbegleiter
-                TutorHomeWidget { showTutor = true }
             }
             .padding(.horizontal, 18)
             .padding(.top, 18)
             .padding(.bottom, 48)
         }
         .background(Color(uiColor: .systemGroupedBackground))
-        .onAppear { startGreeting() }
-        .onDisappear { typingTimer?.invalidate() }
+        .onAppear { fullGreeting = buildGreeting() }
+        .task(id: fullGreeting) {
+            if reduceMotion {
+                displayedGreeting = fullGreeting
+                return
+            }
+            displayedGreeting = ""
+            for char in fullGreeting {
+                guard !Task.isCancelled else { return }
+                displayedGreeting.append(char)
+                try? await Task.sleep(nanoseconds: 40_000_000)
+            }
+        }
         .fullScreenCover(item: $selectedPlan) { plan in
             LernPlanDetailView(planId: plan.id)
                 .environmentObject(lernPlanStore)
@@ -149,8 +157,8 @@ struct HomeView: View {
                 Text(timeLabel)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.secondary)
-                Text(String(fullGreeting.prefix(visibleCount)))
-                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                Text(displayedGreeting)
+                    .font(.system(.title2, design: .rounded).weight(.bold))
                     .foregroundStyle(.primary)
             }
             Spacer()
@@ -179,61 +187,38 @@ struct HomeView: View {
 
     private var statsRow: some View {
         HStack(spacing: 10) {
-            statTile(
+            StatCard(
                 value: "\(lernSetStore.lernSets.count)",
                 label: "Lernsets",
                 icon: "square.stack.fill",
-                color: Color(red: 0.38, green: 0.18, blue: 0.90)
+                color: AppColors.brandPurple
             )
-            statTile(
+            StatCard(
                 value: "\(totalCardCount)",
                 label: "Karten",
                 icon: "rectangle.on.rectangle.fill",
                 color: Color(red: 0.10, green: 0.48, blue: 0.92)
             )
-            statTile(
+            StatCard(
                 value: "\(lernPlanStore.plans.filter { $0.daysUntilTest >= 0 }.count)",
                 label: "Pläne",
                 icon: "calendar.badge.checkmark",
-                color: Color(red: 0.95, green: 0.45, blue: 0.10)
+                color: AppColors.brandQuick
             )
         }
-    }
-
-    private func statTile(value: String, label: String, icon: String, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Image(systemName: icon)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(color)
-            Text(value)
-                .font(.system(size: 26, weight: .bold, design: .rounded))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-            Text(label)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                .shadow(color: .black.opacity(0.04), radius: 8, x: 0, y: 3)
-        )
     }
 
     // MARK: - Learn Now Button
 
     private var learnNowButton: some View {
-        Button { onNavigateToLearn?() } label: {
+        Button(action: { onNavigateToLearn?() }) {
             HStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Jetzt lernen")
                         .font(.system(size: 20, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                     Text(motivationSubtitle)
-                        .font(.system(size: 13))
+                        .font(.footnote)
                         .foregroundStyle(.white.opacity(0.80))
                 }
                 Spacer()
@@ -255,7 +240,7 @@ struct HomeView: View {
                             radius: 18, x: 0, y: 8)
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressScaleButtonStyle())
     }
 
     // MARK: - Helpers
@@ -283,19 +268,6 @@ struct HomeView: View {
     }
 
     // MARK: - Greeting Logic
-
-    private func startGreeting() {
-        typingTimer?.invalidate()
-        fullGreeting = buildGreeting()
-        visibleCount = 0
-        typingTimer = Timer.scheduledTimer(withTimeInterval: 0.045, repeats: true) { timer in
-            if visibleCount < fullGreeting.count {
-                visibleCount += 1
-            } else {
-                timer.invalidate()
-            }
-        }
-    }
 
     private func buildGreeting() -> String {
         let hour = Calendar.current.component(.hour, from: Date())
@@ -347,7 +319,7 @@ struct SchnellaktionenWidget: View {
             HStack(spacing: 12) {
                 MascotIconView(color: item.color, size: 38, cornerRadius: 10)
                 Text(item.title)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                 Spacer(minLength: 0)
@@ -360,7 +332,7 @@ struct SchnellaktionenWidget: View {
                     .shadow(color: .black.opacity(0.04), radius: 6, x: 0, y: 2)
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressScaleButtonStyle())
     }
 }
 
@@ -445,7 +417,7 @@ struct NächsterTestWidget: View {
                     .shadow(color: urgencyColor.opacity(0.10), radius: 10, x: 0, y: 4)
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressScaleButtonStyle())
     }
 }
 
@@ -456,7 +428,7 @@ struct WochenaktivitätWidget: View {
     let isActiveToday: Bool
 
     private let dayLabels = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
-    private let accent = Color(red: 0.30, green: 0.52, blue: 0.98)
+    private let accent = AppColors.brandPurpleLight
 
     // 0 = Mon … 6 = Sun
     private var todayIndex: Int {
@@ -585,7 +557,7 @@ struct SetsÜbersichtWidget: View {
                     .foregroundStyle(color)
             }
             Text(title)
-                .font(.system(size: 14, weight: .medium))
+                .font(.subheadline.weight(.medium))
                 .foregroundStyle(.primary)
             Spacer()
             Text("\(count)")
@@ -600,7 +572,7 @@ struct SetsÜbersichtWidget: View {
 // MARK: - Tagesquote Widget
 
 struct TagesquoteWidget: View {
-    private let accent = Color(red: 0.38, green: 0.18, blue: 0.90)
+    private let accent = AppColors.brandPurple
 
     private let quotes: [(text: String, author: String)] = [
         ("Bildung ist die mächtigste Waffe, die du benutzen kannst, um die Welt zu verändern.", "Nelson Mandela"),
@@ -636,7 +608,7 @@ struct TagesquoteWidget: View {
             }
 
             Text("„\(todayQuote.text)\u{201D}")
-                .font(.system(size: 15, weight: .medium))
+                .font(.body.weight(.medium))
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
                 .lineSpacing(3)
@@ -644,7 +616,7 @@ struct TagesquoteWidget: View {
             HStack {
                 Spacer()
                 Text("— \(todayQuote.author)")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.footnote.weight(.medium))
                     .foregroundStyle(.secondary)
             }
         }
@@ -765,7 +737,7 @@ struct ZuletztWidget: View {
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text(lernSet.name)
-                            .font(.system(size: 15, weight: .semibold, design: .rounded))
+                            .font(.system(.subheadline, design: .rounded).weight(.semibold))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                         HStack(spacing: 6) {
@@ -804,7 +776,7 @@ struct ZuletztWidget: View {
                         .shadow(color: .black.opacity(0.04), radius: 8, x: 0, y: 3)
                 )
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PressScaleButtonStyle())
         }
         .sheet(isPresented: $showLearn) {
             NavigationStack {
@@ -821,7 +793,7 @@ struct LernpfadWidget: View {
     let plan: LernPlan
     let onTap: () -> Void
 
-    private let accent = Color(red: 0.10, green: 0.48, blue: 0.92)
+    private let accent = AppColors.brandBlue
 
     var body: some View {
         Button(action: onTap) {
@@ -857,7 +829,7 @@ struct LernpfadWidget: View {
 
                 // Plan title
                 Text(plan.titel)
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .font(.system(.subheadline, design: .rounded).weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
 
@@ -877,7 +849,7 @@ struct LernpfadWidget: View {
                                 .font(.system(size: 10, weight: .semibold))
                                 .foregroundStyle(.secondary)
                             Text(aufgabe.titel)
-                                .font(.system(size: 14, weight: .medium))
+                                .font(.subheadline.weight(.medium))
                                 .foregroundStyle(aufgabe.completed ? .secondary : .primary)
                                 .lineLimit(1)
                         }
@@ -927,7 +899,7 @@ struct LernpfadWidget: View {
                     .shadow(color: accent.opacity(0.10), radius: 10, x: 0, y: 4)
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressScaleButtonStyle())
     }
 
     private var daysLabel: String {
@@ -951,8 +923,8 @@ struct HeuteWidget: View {
     @State private var generatingId: UUID? = nil
     @State private var navigateToSet: LernSet? = nil
 
-    private let accent = Color(red: 0.10, green: 0.48, blue: 0.92)
-    private let orange = Color(red: 0.95, green: 0.55, blue: 0.10)
+    private let accent = AppColors.brandBlue
+    private let orange = AppColors.brandQuick
 
     struct TodayItem: Identifiable {
         let id: UUID
@@ -1087,6 +1059,8 @@ struct HeuteWidget: View {
                             .scaleEffect(0.55)
                             .tint(accent)
                     }
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Circle())
                 } else {
                     playCircle(color: accent)
                 }
@@ -1105,6 +1079,8 @@ struct HeuteWidget: View {
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(color)
         }
+        .frame(minWidth: 44, minHeight: 44)
+        .contentShape(Circle())
     }
 
     private func generateLernSet(item: TodayItem) {
@@ -1113,7 +1089,6 @@ struct HeuteWidget: View {
             do {
                 let cards = try await AIService.shared.generateLernSet(
                     fach: item.plan.fach,
-                    klassenstufe: item.plan.klassenstufe,
                     thema: item.aufgabe.thema,
                     schwierigkeit: item.aufgabe.schwierigkeit,
                     anzahl: item.aufgabe.anzahl
@@ -1138,3 +1113,4 @@ struct HeuteWidget: View {
         }
     }
 }
+

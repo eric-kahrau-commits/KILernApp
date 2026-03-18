@@ -26,18 +26,29 @@ struct CreateTestView: View {
     @State private var showGeneratedTest: Bool = false
     @State private var isGeneratingOverlay: Bool = false
     @State private var generationProgress: Double = 0
+    @State private var showCelebration: Bool = false
+    @State private var showDismissAlert: Bool = false
 
     private let totalSteps = 3
-    private let accent = Color(red: 0.85, green: 0.25, blue: 0.45)
-    private let gradient = LinearGradient(
-        colors: [Color(red: 0.85, green: 0.25, blue: 0.45), Color(red: 0.60, green: 0.18, blue: 0.75)],
-        startPoint: .topLeading, endPoint: .bottomTrailing
-    )
+    private let accent = AppColors.brandPink
+    private let gradient = AppGradients.test
+
+    private var hasUnsavedChanges: Bool {
+        !testName.isEmpty || !selectedLernSetIds.isEmpty || !beschreibung.isEmpty || !besondereWuensche.isEmpty
+    }
 
     private var canAdvance: Bool {
         switch currentStep {
         case 1: return !testName.trimmingCharacters(in: .whitespaces).isEmpty
         default: return true   // Lernsets (Schritt 2) und Details (Schritt 3) sind optional
+        }
+    }
+
+    private var maxGuideText: String {
+        switch currentStep {
+        case 1: return "Wie soll dein Test heißen? 🧐\nGib ihm einen Namen und wähle das Fach – dann kann ich loslegen!"
+        case 2: return "Ich kann deine Lernsets als Vorlage nutzen – oder auch ganz ohne starten. Du entscheidest! 📚"
+        default: return "Fast fertig! Je mehr Details du mir gibst, desto besser wird dein Test. 🎯"
         }
     }
 
@@ -47,10 +58,10 @@ struct CreateTestView: View {
                 Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
                 VStack(spacing: 0) {
                     navBar
-                    progressBar
+                    CreationProgressBar(progress: Double(currentStep) / Double(totalSteps), color: accent)
                     ScrollView {
                         VStack(spacing: 24) {
-                            maxBanner
+                            MascotGuideBanner(color: accent, characterName: "Max", text: maxGuideText)
                             switch currentStep {
                             case 1: step1
                             case 2: step2
@@ -69,8 +80,23 @@ struct CreateTestView: View {
                         .transition(.opacity.combined(with: .scale(scale: 0.95)))
                         .zIndex(10)
                 }
+
+                if showCelebration {
+                    SaveCelebrationOverlay(color: accent, characterName: "Max") {
+                        showCelebration = false
+                        showGeneratedTest = true
+                    }
+                    .transition(.opacity)
+                    .zIndex(20)
+                }
             }
             .animation(.spring(response: 0.5, dampingFraction: 0.8), value: isGeneratingOverlay)
+            .alert("Eingaben verwerfen?", isPresented: $showDismissAlert) {
+                Button("Verwerfen", role: .destructive) { dismiss() }
+                Button("Weiter bearbeiten", role: .cancel) {}
+            } message: {
+                Text("Deine Eingaben gehen verloren, wenn du jetzt abbrichst.")
+            }
             .navigationBarHidden(true)
             .navigationDestination(isPresented: $showGeneratedTest) {
                 if let test = generatedTest {
@@ -80,42 +106,6 @@ struct CreateTestView: View {
         }
     }
 
-    // MARK: - Max Banner
-
-    private var maxBanner: some View {
-        let messages = [
-            "Wie soll dein Test heißen? 🧐\nGib ihm einen Namen – dann kann ich loslegen!",
-            "Ich kann deine Lernsets als Vorlage nutzen – oder auch ganz ohne starten. Du entscheidest! 📚",
-            "Fast fertig! Je mehr Details du mir gibst, desto besser wird dein Test. 🎯"
-        ]
-        let msg = messages[min(currentStep - 1, messages.count - 1)]
-        return HStack(spacing: 14) {
-            MascotView(color: accent, mood: .talking, size: 46)
-                .frame(width: 46, height: 52)
-            VStack(alignment: .leading, spacing: 3) {
-                Text("MAX")
-                    .font(.system(size: 9, weight: .bold, design: .rounded))
-                    .foregroundStyle(accent)
-                    .tracking(1.5)
-                Text(msg)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.primary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer()
-        }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(accent.opacity(0.08))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(accent.opacity(0.20), lineWidth: 1)
-                )
-        )
-        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: currentStep)
-    }
-
     // MARK: - Nav Bar
 
     private var navBar: some View {
@@ -123,6 +113,8 @@ struct CreateTestView: View {
             Button {
                 if currentStep > 1 {
                     withAnimation(.easeInOut(duration: 0.25)) { currentStep -= 1 }
+                } else if hasUnsavedChanges {
+                    showDismissAlert = true
                 } else {
                     dismiss()
                 }
@@ -133,8 +125,11 @@ struct CreateTestView: View {
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(.primary)
                 }
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Circle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(currentStep > 1 ? "Zurück" : "Schließen")
             Spacer()
             Text("Test erstellen")
                 .font(.system(size: 17, weight: .semibold, design: .rounded))
@@ -147,21 +142,6 @@ struct CreateTestView: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(.primary.opacity(0.06)).frame(height: 0.5)
         }
-    }
-
-    // MARK: - Progress Bar
-
-    private var progressBar: some View {
-        HStack(spacing: 6) {
-            ForEach(1...totalSteps, id: \.self) { step in
-                Capsule()
-                    .fill(currentStep >= step ? accent : Color(uiColor: .tertiarySystemGroupedBackground))
-                    .frame(height: 4)
-                    .animation(.easeInOut(duration: 0.3), value: currentStep)
-            }
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 10)
     }
 
     // MARK: - Step 1: Name + Fach
@@ -549,7 +529,7 @@ struct CreateTestView: View {
                 try? await Task.sleep(nanoseconds: 700_000_000)
                 withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) { isGeneratingOverlay = false }
                 try? await Task.sleep(nanoseconds: 350_000_000)
-                showGeneratedTest = true
+                withAnimation { showCelebration = true }
 
             } catch {
                 isGenerating = false
@@ -565,7 +545,7 @@ struct CreateTestView: View {
 private struct MaxGeneratingOverlay: View {
     @Binding var progress: Double
 
-    private let accent = Color(red: 0.85, green: 0.25, blue: 0.45)
+    private let accent = AppColors.brandPink
 
     var body: some View {
         ZStack {

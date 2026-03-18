@@ -8,7 +8,7 @@ struct TopBar: View {
     var body: some View {
         HStack(spacing: 0) {
             Button {
-                withAnimation(.spring(response: 0.36, dampingFraction: 0.76)) {
+                withAnimation(AppAnimation.standard) {
                     isSidebarOpen.toggle()
                 }
             } label: {
@@ -16,7 +16,7 @@ struct TopBar: View {
                     Image(systemName: "xmark")
                         .font(.system(size: 20, weight: .semibold))
                         .foregroundStyle(.primary)
-                        .animation(.spring(response: 0.3), value: isSidebarOpen)
+                        .animation(AppAnimation.micro, value: isSidebarOpen)
                         .frame(width: 44, height: 44, alignment: .center)
                 } else {
                     VStack(spacing: 5) {
@@ -31,10 +31,21 @@ struct TopBar: View {
                             .frame(width: 18, height: 2.6)
                     }
                     .frame(width: 44, height: 44, alignment: .center)
-                    .animation(.spring(response: 0.3), value: isSidebarOpen)
+                    .animation(AppAnimation.micro, value: isSidebarOpen)
                 }
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(isSidebarOpen ? "Menü schließen" : "Menü öffnen")
+            .background(
+                GeometryReader { geo in
+                    Color.clear
+                        .onAppear {
+                            TutorialManager.shared.reportFrame(
+                                geo.frame(in: .global), for: .hamburgerMenu
+                            )
+                        }
+                }
+            )
 
             Spacer()
 
